@@ -1,29 +1,29 @@
-# 🔍 Threat Hunting Methodology
+# 🎯 Detection Strategy
 
 ## 📌 Overview
 
-Threat Hunting is a proactive cybersecurity practice focused on identifying malicious activity that may evade traditional signature-based detections.
+Detection Engineering is the process of designing, validating, and continuously improving security detections that identify malicious behavior while minimizing false positives.
 
-Rather than responding to alerts, Threat Hunting starts with a hypothesis and validates it through telemetry analysis, behavioral investigation, and evidence correlation.
+Within this laboratory, each hunting case is used to create behavioral detections based on attacker techniques rather than static indicators.
 
-This laboratory follows a repeatable hunting methodology designed to simulate the workflow of a SOC Threat Hunter.
+The objective is to transform observed attacker behavior into repeatable detection logic that can be used by a Security Operations Center (SOC).
 
 ---
 
-# 🎯 Hunting Objectives
+# 🎯 Detection Objectives
 
-- Identify attacker behavior through telemetry.
-- Validate suspicious activity using multiple data sources.
-- Develop behavioral detections.
+- Detect attacker behavior rather than individual tools.
+- Prioritize high-confidence detections.
 - Reduce false positives.
-- Improve detection coverage.
-- Document findings and lessons learned.
+- Improve analyst visibility.
+- Continuously validate and refine detection logic.
+- Align detections with the MITRE ATT&CK framework.
 
 ---
 
-# 🔄 Hunting Workflow
+# 🔄 Detection Engineering Workflow
 
-Every hunting case follows the same methodology.
+Every detection developed in this laboratory follows the same lifecycle.
 
 ```text
 Threat Hypothesis
@@ -35,10 +35,7 @@ Attack Simulation
 Telemetry Collection
         │
         ▼
-Threat Hunting
-        │
-        ▼
-Evidence Correlation
+Detection Development
         │
         ▼
 Detection Validation
@@ -47,52 +44,97 @@ Detection Validation
 False Positive Analysis
         │
         ▼
-Detection Improvement
+Detection Tuning
+        │
+        ▼
+Production-Ready Detection
 ```
 
 ---
 
-# 📊 Telemetry Sources
+# 📊 Detection Severity
 
-The following telemetry sources are used throughout this laboratory.
+Each detection is classified according to its potential security impact.
 
-| Source | Purpose |
-|---------|----------|
-| Windows Security Logs | Authentication and security auditing |
-| Sysmon | Process, network and endpoint telemetry |
-| Elastic SIEM | Event correlation and investigation |
-| Kibana | Threat Hunting and visualization |
-| Wireshark | Network traffic validation |
+| Severity | Description |
+|-----------|-------------|
+| 🔴 High | Strong evidence of malicious activity requiring immediate investigation. |
+| 🟠 Medium | Suspicious behavior that requires analyst review. |
+| 🟡 Low | Activity that may be legitimate but should be monitored. |
 
 ---
 
-# 🧩 Hunting Lifecycle
+# 📈 Detection Development Principles
 
-Each hunting scenario includes:
+Behavior-based detections should:
 
-- Hunting hypothesis
-- Attack simulation
+- Detect techniques instead of specific malware.
+- Be resilient against attacker modifications.
+- Generate actionable alerts.
+- Be easy to understand and maintain.
+- Include supporting investigation guidance.
+
+---
+
+# 🧩 Detection Components
+
+Every detection documented in this repository includes:
+
+- Detection objective
+- Threat hypothesis
 - Detection logic
-- KQL queries
-- Evidence collection
+- KQL query
+- Telemetry sources
 - MITRE ATT&CK mapping
-- IOC identification
-- Analyst assessment
-- Detection tuning
-- Lessons learned
+- Expected behavior
+- Potential false positives
+- Detection improvements
+- Analyst recommendations
+
+---
+
+# 🔍 Detection Validation
+
+Each detection is validated through controlled attack simulations.
+
+Validation includes:
+
+- Successful detection generation.
+- Evidence collection.
+- Event correlation.
+- Review of false positives.
+- Confirmation of MITRE ATT&CK mapping.
+
+Only validated detections are included in this repository.
+
+---
+
+# 📉 False Positive Analysis
+
+Every detection must be evaluated for legitimate activities that may trigger the same behavior.
+
+False positive analysis includes:
+
+- Administrative activity.
+- Software installation.
+- System maintenance.
+- Enterprise management tools.
+- Authorized PowerShell usage.
+
+Detection tuning should minimize analyst workload without reducing visibility.
 
 ---
 
 # 🚀 Continuous Improvement
 
-Threat Hunting is an iterative process.
+Detection Engineering is an ongoing process.
 
-Every completed hunt should improve detection capabilities by:
+Every completed hunt should contribute to:
 
-- Creating new detections
-- Improving existing rules
-- Identifying telemetry gaps
-- Reducing false positives
-- Increasing analyst visibility
+- Improved detection quality.
+- Reduced false positives.
+- Better telemetry coverage.
+- Enhanced analyst efficiency.
+- Stronger defensive capabilities.
 
-The ultimate objective is to continuously improve defensive capabilities.
+The goal is to continuously improve the organization's detection posture through iterative validation and refinement.
