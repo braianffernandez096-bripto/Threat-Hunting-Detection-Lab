@@ -1,0 +1,10 @@
+<!-- T1574.001 — DLL Side-Loading / masquerading vía GUP.exe fuera de ubicación -->
+<rule id="100060" level="12">
+  <if_group>sysmon_eid1_detections</if_group>
+  <field name="win.eventdata.originalFileName" type="pcre2">(?i)^gup\.exe$</field>
+  <field name="win.eventdata.image" type="pcre2">(?i)^(?!.*notepad).*gup\.exe$</field>
+  <description>GUP.exe (actualizador legítimo de Notepad++) ejecutándose fuera de su carpeta de instalación esperada — indicio de DLL Side-Loading/masquerading</description>
+  <mitre>
+    <id>T1574.001</id>
+  </mitre>
+</rule>
