@@ -1,5 +1,7 @@
 # 🛡️ Threat Hunting & Detection Engineering Lab
 
+[![Status](https://img.shields.io/badge/Status-Completed-brightgreen)](https://img.shields.io/badge/Status-Completed-brightgreen) [![Platform](https://img.shields.io/badge/Platform-Windows%2010-blue)](https://img.shields.io/badge/Platform-Windows%2010-blue) [![SIEM](https://img.shields.io/badge/SIEM-Wazuh%204.14.7-purple)](https://img.shields.io/badge/SIEM-Wazuh%204.14.7-purple) [![Telemetry](https://img.shields.io/badge/Telemetry-Sysmon-blue)](https://img.shields.io/badge/Telemetry-Sysmon-blue) [![NIDS](https://img.shields.io/badge/NIDS-Snort-orange)](https://img.shields.io/badge/NIDS-Snort-orange) [![Orchestration](https://img.shields.io/badge/Orchestration-n8n-red)](https://img.shields.io/badge/Orchestration-n8n-red) [![Threat Intel](https://img.shields.io/badge/Threat%20Intel-VirusTotal-blue)](https://img.shields.io/badge/Threat%20Intel-VirusTotal-blue) [![Persistence](https://img.shields.io/badge/Persistence-SQLite-lightgrey)](https://img.shields.io/badge/Persistence-SQLite-lightgrey) [![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-12%20Techniques%20Mapped-red)](https://img.shields.io/badge/MITRE%20ATT%26CK-12%20Techniques%20Mapped-red)
+
 **Threat hunting proactivo, ingeniería de detección, simulación de movimiento lateral y orquestación de respuesta — sobre un entorno corporativo simulado con Windows, Kali Linux y Wazuh**
 
 **Estado:** Fase host-based + Snort + Kali + VirusTotal + orquestación con n8n + persistencia en SQLite + cadena de Credential Access (BITSAdmin/LSASS/Mimikatz) completa · **Wazuh:** 4.14.7 · **Framework:** MITRE ATT&CK
@@ -514,4 +516,4 @@ Esto ilustra bien un punto central del proyecto: **la reputación por hash no al
 
 ## 👤 Braian Fernandez
 
-Portafolio de ciberseguridad
+Portafolio de ciberseguridad.
