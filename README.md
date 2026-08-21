@@ -1,6 +1,6 @@
-# 🛡️ AI-Augmented Enterprise Threat Hunting Lab
+# 🛡️ Threat Hunting & Detection Engineering Lab
 
-**SOC L2 — Simulación de amenazas empresariales, detección de LOLBins, movimiento lateral, enriquecimiento con Threat Intelligence y orquestación asistida por IA**
+**Threat hunting proactivo, ingeniería de detección, simulación de movimiento lateral y orquestación de respuesta — sobre un entorno corporativo simulado con Windows, Kali Linux y Wazuh**
 
 **Estado:** Fase host-based + Snort + Kali + VirusTotal + orquestación con n8n + persistencia en SQLite + cadena de Credential Access (BITSAdmin/LSASS/Mimikatz) completa · **Wazuh:** 4.14.7 · **Framework:** MITRE ATT&CK
 
@@ -8,7 +8,7 @@
 
 ## 📋 Resumen ejecutivo
 
-Este proyecto es la evolución de mi [Mini SOC SIEM (L1)](#) hacia un entorno de nivel **SOC L2**, orientado a **threat hunting proactivo**, **ingeniería de detección** y **orquestación de respuesta**. Simula un entorno corporativo donde un endpoint Windows es atacado usando técnicas reales de *Living-off-the-Land* (LOLBins) y **movimiento lateral con un atacante externo real** (Kali Linux), correlacionadas a nivel de host (Sysmon + Wazuh), de red (Snort NIDS), enriquecidas con reputación de archivos (VirusTotal) y orquestadas de punta a punta con **n8n**, que automatiza la detección, el enriquecimiento y la notificación sin intervención manual.
+Este proyecto simula un entorno corporativo donde un endpoint Windows es atacado usando técnicas reales de *Living-off-the-Land* (LOLBins) y **movimiento lateral con un atacante externo real** (Kali Linux), correlacionadas a nivel de host (Sysmon + Wazuh), de red (Snort NIDS), enriquecidas con reputación de archivos (VirusTotal) y orquestadas de punta a punta con **n8n**, que automatiza la detección, el enriquecimiento y la notificación sin intervención manual.
 
 El objetivo no es solo detectar — es **documentar el razonamiento de análisis**: qué se detectó, por qué, qué fue ruido, qué falló y por qué, y cómo se ajustó la detección con criterio profesional.
 
@@ -512,5 +512,4 @@ Esto ilustra bien un punto central del proyecto: **la reputación por hash no al
 
 ## 👤 Braian Fernandez
 
-Portafolio de ciberseguridad
-Proyecto relacionado: [Mini SOC SIEM (L1)](#)
+Portafolio de ciberseguridad /
