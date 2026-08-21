@@ -1,0 +1,33 @@
+<!--
+  Reglas custom para Wazuh — Técnica T1059.001 (PowerShell EncodedCommand)
+  Proyecto: AI-Augmented Enterprise Threat Hunting Lab
+  Ubicación en el Manager: /var/ossec/etc/rules/local_rules.xml
+-->
+<group name="local,sysmon,">
+
+  <!-- Excepción: archivo temporal propio de PowerShell (falso positivo) -->
+  <rule id="100010" level="0">
+    <if_sid>92213</if_sid>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)PSScriptPolicyTest</field>
+    <description>Falso positivo: archivo temporal propio de PowerShell (PSScriptPolicyTest), no es malware</description>
+  </rule>
+
+  <!-- Excepción: artefactos de compilación en memoria de C# (falso positivo) -->
+  <rule id="100011" level="0">
+    <if_sid>92213</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)csc\.exe$</field>
+    <description>Falso positivo: artefactos de compilación en memoria de C# (csc.exe) generados por PowerShell/Add-Type, comportamiento normal</description>
+  </rule>
+
+  <!-- Detección ampliada: PowerShell EncodedCommand sin depender del proceso padre -->
+  <rule id="100020" level="12">
+    <if_group>sysmon_eid1_detections</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)powershell\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)-(e|enc|encodedcommand)\s+[A-Za-z0-9+/=]{20,}</field>
+    <description>Ejecución de PowerShell con comando codificado en Base64 (cualquier proceso padre)</description>
+    <mitre>
+      <id>T1059.001</id>
+    </mitre>
+  </rule>
+
+</group>
