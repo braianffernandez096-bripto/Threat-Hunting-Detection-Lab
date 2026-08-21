@@ -1,0 +1,3 @@
+alerta_id,regla_id,nivel,descripcion,mitre_id,imagen,sha256,vt_maliciosos,vt_sospechosos,vt_total_motores,vt_estado,fecha_procesado
+Lp8gIaABu7G34HTu6jyI,100090,12,"Uso de BITSAdmin para transferencia de archivos — posible descarga de payload o exfiltración vía BITS Jobs",T1197,C:\Windows\System32\bitsadmin.exe,739B2DD012EA183895CC01116906F339C9AA1C0BAABF6F22C8E59E25A0C12917,0,0,75,ok,2026-08-20 21:45:40
+u09FIKABzbM1jsyE9l8o,100090,12,"Uso de BITSAdmin para transferencia de archivos — posible descarga de payload o exfiltración vía BITS Jobs",T1197,C:\Windows\System32\bitsadmin.exe,739B2DD012EA183895CC01116906F339C9AA1C0BAABF6F22C8E59E25A0C12917,0,0,75,ok,2026-08-20 21:45:57
