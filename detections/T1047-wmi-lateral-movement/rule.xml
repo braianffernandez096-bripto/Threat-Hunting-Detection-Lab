@@ -1,0 +1,10 @@
+<!-- T1047 — Patrón de Impacket wmiexec.py (ejecución remota vía WMI) -->
+<rule id="100070" level="12">
+  <if_group>sysmon_eid1_detections</if_group>
+  <field name="win.eventdata.parentImage" type="pcre2">(?i)cmd\.exe$</field>
+  <field name="win.eventdata.parentCommandLine" type="pcre2">(?i)ADMIN\$.{0,5}__\d{8}</field>
+  <description>Patrón de Impacket wmiexec.py: cmd.exe redirigiendo salida a ADMIN$\__(timestamp) — ejecución remota vía WMI</description>
+  <mitre>
+    <id>T1047</id>
+  </mitre>
+</rule>
