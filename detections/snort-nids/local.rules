@@ -1,0 +1,20 @@
+# $Id: local.rules,v 1.11 2004/07/23 20:15:44 bmc Exp $
+# ----------------
+# LOCAL RULES - AI-Augmented Enterprise Threat Hunting Lab
+# ----------------
+
+# T1059.001 - Descarga via PowerShell (User-Agent WindowsPowerShell)
+alert tcp $HOME_NET any -> $EXTERNAL_NET $HTTP_PORTS (msg:"Descarga via PowerShell detectada (User-Agent WindowsPowerShell)"; content:"User-Agent|3a 20|"; http_header; content:"WindowsPowerShell"; http_header; distance:0; sid:1000002; rev:1; classtype:trojan-activity; reference:url,attack.mitre.org/techniques/T1059/001/;)
+
+# T1218.010 - Squiblydoo: solicitud HTTP de archivo .sct
+alert tcp $HOME_NET any -> any $HTTP_PORTS (msg:"Posible Squiblydoo - solicitud HTTP de archivo .sct"; content:".sct"; http_uri; nocase; sid:1000003; rev:1; classtype:trojan-activity; reference:url,attack.mitre.org/techniques/T1218/010/;)
+
+# T1105 - Descarga de ejecutable .exe via HTTP en texto plano
+alert tcp $HOME_NET any -> any $HTTP_PORTS (msg:"Descarga de ejecutable .exe via HTTP en texto plano"; content:".exe"; http_uri; nocase; sid:1000004; rev:1; classtype:policy-violation; reference:url,attack.mitre.org/techniques/T1105/;)
+
+# Especifica del lab - trafico hacia GitHub raw content (origen comun de payloads de Atomic Red Team)
+# NOTA: no dispara contra trafico HTTPS real sin SSL inspection (ver lessons-learned)
+alert tcp $HOME_NET any -> any $HTTP_PORTS (msg:"Descarga desde GitHub raw content - posible payload de test/atomic"; content:"Host|3a 20|raw.githubusercontent.com"; http_header; sid:1000005; rev:1; classtype:policy-violation;)
+
+# Canal encubierto / exfiltracion potencial via ICMP con payload grande
+alert icmp $HOME_NET any -> any any (msg:"ICMP con payload inusualmente grande - posible canal encubierto"; dsize:>800; sid:1000006; rev:1; classtype:policy-violation;)
