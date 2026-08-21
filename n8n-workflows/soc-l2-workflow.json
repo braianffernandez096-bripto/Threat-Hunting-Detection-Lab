@@ -1,0 +1,2151 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "20510c82-763d-426c-be4d-1db4bccf3449",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://192.168.64.130:9200/wazuh-alerts-*/_search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"size\": 20,\n  \"sort\": [{\"timestamp\": {\"order\": \"desc\"}}],\n  \"query\": {\n    \"bool\": {\n      \"must\": [\n        {\"range\": {\"rule.level\": {\"gte\": 12}}},\n        {\"exists\": {\"field\": \"data.win.eventdata.hashes\"}}\n      ]\n    }\n  }\n}",
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "cdcbc515-0247-41fd-909c-57a21f6089fa",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "lNs80eoQ3DD7gV2M",
+          "name": "admin"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "hits.hits",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "1f1c142a-5390-4965-a26e-e04e100f1968",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const source = $json._source;\nconst alertaId = $json._id;\nconst eventdata = source?.data?.win?.eventdata || {};\nconst hashesStr = eventdata.hashes || \"\";\n\n// Misma regex que wazuh_vt_enrich.py: extraer_sha256()\nconst match = hashesStr.match(/SHA256=([A-Fa-f0-9]{64})/);\nconst sha256 = match ? match[1] : null;\n\nreturn {\n  json: {\n    alerta_id: alertaId,\n    regla_id: source.rule?.id ?? null,\n    nivel: source.rule?.level ?? null,\n    descripcion: source.rule?.description ?? \"N/A\",\n    mitre_id: source.rule?.mitre?.id?.[0] ?? \"N/A\",\n    imagen: eventdata.image ?? \"N/A\",\n    comando: eventdata.commandLine ?? \"N/A\",\n    sha256: sha256\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        0
+      ],
+      "id": "302897bc-e307-4a23-9fd4-d2b41f0efc52",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ca90f9e3-2136-48f6-9923-539533773176",
+              "leftValue": "={{ $json.sha256 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        800,
+        0
+      ],
+      "id": "86545f97-a714-42c3-ac53-4eaef6ec2d74",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1232,
+        0
+      ],
+      "id": "29c3280e-091d-4712-92e5-bcbe0ce15271",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "url": "=https://www.virustotal.com/api/v3/files/{{ $json.sha256 }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1456,
+        0
+      ],
+      "id": "d8015a04-9b5c-4e73-b892-050227a671f1",
+      "name": "HTTP Request1",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ecWx7HK4Az4RazVs",
+          "name": "x-apikey"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "amount": 16
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2608,
+        -16
+      ],
+      "id": "64715ab4-cf4b-4f89-bc41-6d48ac84c495",
+      "name": "Wait",
+      "webhookId": "76ac074c-815e-460e-b53a-e381a4ddcf2c"
+    },
+    {
+      "parameters": {
+        "jsCode": "const sqlite3 = require('sqlite3').verbose();\nconst path = '/home/node/.n8n/db/soc_alerts.db';\n\nreturn new Promise((resolve, reject) => {\n  const db = new sqlite3.Database(path, sqlite3.OPEN_READWRITE, (err) => {\n    if (err) {\n      reject(new Error('Error abriendo DB: ' + err.message));\n      return;\n    }\n    db.all('SELECT alerta_id FROM alertas', [], (err, rows) => {\n      db.close();\n      if (err) {\n        reject(new Error('Error consultando: ' + err.message));\n        return;\n      }\n      const procesados = new Set(rows.map(r => r.alerta_id));\n      const items = $input.all();\n      const nuevos = items.filter(item => !procesados.has(item.json.alerta_id));\n      resolve(nuevos);\n    });\n  });\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        0
+      ],
+      "id": "6f49b747-b20d-4abc-9168-e9753244157f",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const sqlite3 = require('sqlite3').verbose();\nconst path = '/home/node/.n8n/db/soc_alerts.db';\n\nconst vtData = $json.data;\nconst alertaOriginal = $('Code in JavaScript').item.json;\n\nlet vtEstado, vtMaliciosos, vtSospechosos, vtTotalMotores;\n\nif (!vtData) {\n  vtEstado = 'sin_registro';\n  vtMaliciosos = null;\n  vtSospechosos = null;\n  vtTotalMotores = null;\n} else {\n  const stats = vtData.attributes?.last_analysis_stats || {};\n  vtEstado = 'ok';\n  vtMaliciosos = stats.malicious ?? 0;\n  vtSospechosos = stats.suspicious ?? 0;\n  vtTotalMotores = Object.values(stats).reduce((a, b) => a + b, 0);\n}\n\nreturn new Promise((resolve, reject) => {\n  const db = new sqlite3.Database(path, sqlite3.OPEN_READWRITE, (err) => {\n    if (err) {\n      reject(new Error('Error abriendo DB: ' + err.message));\n      return;\n    }\n    const sql = `INSERT OR REPLACE INTO alertas\n      (alerta_id, regla_id, nivel, descripcion, mitre_id, imagen, sha256, vt_maliciosos, vt_sospechosos, vt_total_motores, vt_estado)\n      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;\n\n    db.run(sql, [\n      alertaOriginal.alerta_id,\n      alertaOriginal.regla_id,\n      alertaOriginal.nivel,\n      alertaOriginal.descripcion,\n      alertaOriginal.mitre_id,\n      alertaOriginal.imagen,\n      alertaOriginal.sha256,\n      vtMaliciosos,\n      vtSospechosos,\n      vtTotalMotores,\n      vtEstado\n    ], (err) => {\n      db.close();\n      if (err) {\n        reject(new Error('Error insertando: ' + err.message));\n        return;\n      }\n      resolve($json);\n    });\n  });\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1872,
+        -176
+      ],
+      "id": "b1c7a789-5c93-4438-874e-8f9795d2bcb2",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const vtData = $json.data;\nconst alertaOriginal = $('Code in JavaScript').item.json;\n\nlet resumenVT;\nif (!vtData) {\n  resumenVT = \"Sin registro en VirusTotal (archivo no visto antes)\";\n} else {\n  const stats = vtData.attributes?.last_analysis_stats || {};\n  const maliciosos = stats.malicious ?? 0;\n  const sospechosos = stats.suspicious ?? 0;\n  const total = Object.values(stats).reduce((a, b) => a + b, 0);\n  const nombres = (vtData.attributes?.names || []).slice(0, 3).join(\", \");\n  resumenVT = `${maliciosos} maliciosos / ${sospechosos} sospechosos / ${total} motores` +\n              (nombres ? ` | Nombres vistos: ${nombres}` : \"\");\n}\n\nconst emoji = (vtData?.attributes?.last_analysis_stats?.malicious ?? 0) > 0 ? \"🔴\" : \"🟡\";\n\nconst texto = `${emoji} *Alerta Wazuh nivel ${alertaOriginal.nivel}*\\n` +\n              `*Regla:* ${alertaOriginal.descripcion}\\n` +\n              `*MITRE:* ${alertaOriginal.mitre_id}\\n` +\n              `*Imagen:* \\`${alertaOriginal.imagen}\\`\\n` +\n              `*SHA256:* \\`${alertaOriginal.sha256}\\`\\n` +\n              `*VirusTotal:* ${resumenVT}`;\n\nreturn { json: { text: texto } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2048,
+        -176
+      ],
+      "id": "bbb20e20-f03a-45d1-b05b-69aded61ceb8",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2224,
+        -176
+      ],
+      "id": "2591cc8d-123b-459b-8a46-7f8365dc6f31",
+      "name": "HTTP Request2"
+    }
+  ],
+  "pinData": {
+    "HTTP Request": [
+      {
+        "json": {
+          "took": 484,
+          "timed_out": false,
+          "_shards": {
+            "total": 12,
+            "successful": 12,
+            "skipped": 3,
+            "failed": 0
+          },
+          "hits": {
+            "total": {
+              "value": 17,
+              "relation": "eq"
+            },
+            "max_score": null,
+            "hits": [
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.18",
+                "_id": "jYxcFqABnRr5c4OB2ETJ",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "whoami.exe",
+                        "image": "C:\\\\Windows\\\\System32\\\\whoami.exe",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-b368-6a84-8f02-000000001700}",
+                        "description": "whoami - displays logged on user information",
+                        "logonGuid": "{b4526b9f-b365-6a84-6fb2-6f0000000000}",
+                        "parentCommandLine": "cmd.exe /Q /c whoami 1&gt; \\\\\\\\127.0.0.1\\\\ADMIN$\\\\__1787081572.6984355 2&gt;&amp;1",
+                        "processGuid": "{b4526b9f-b368-6a84-9102-000000001700}",
+                        "logonId": "0x6fb26f",
+                        "parentProcessId": "3852",
+                        "processId": "8820",
+                        "currentDirectory": "C:\\\\",
+                        "utcTime": "2026-08-18 19:32:56.417",
+                        "hashes": "MD5=A4A6924F3EAF97981323703D38FD99C4,SHA256=1D4902A04D99E8CCBFE7085E63155955FEE397449D386453F6C452AE407B8743,IMPHASH=7FF0758B766F747CE57DFAC70743FB88",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\cmd.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "whoami",
+                        "integrityLevel": "High",
+                        "fileVersion": "10.0.19041.1 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "0",
+                        "parentUser": "DESKTOP-IC9GOIC\\\\Brian"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-18 19:32:56.417\r\nProcessGuid: {b4526b9f-b368-6a84-9102-000000001700}\r\nProcessId: 8820\r\nImage: C:\\Windows\\System32\\whoami.exe\r\nFileVersion: 10.0.19041.1 (WinBuild.160101.0800)\r\nDescription: whoami - displays logged on user information\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: whoami.exe\r\nCommandLine: whoami  \r\nCurrentDirectory: C:\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-b365-6a84-6fb2-6f0000000000}\r\nLogonId: 0x6FB26F\r\nTerminalSessionId: 0\r\nIntegrityLevel: High\r\nHashes: MD5=A4A6924F3EAF97981323703D38FD99C4,SHA256=1D4902A04D99E8CCBFE7085E63155955FEE397449D386453F6C452AE407B8743,IMPHASH=7FF0758B766F747CE57DFAC70743FB88\r\nParentProcessGuid: {b4526b9f-b368-6a84-8f02-000000001700}\r\nParentProcessId: 3852\r\nParentImage: C:\\Windows\\System32\\cmd.exe\r\nParentCommandLine: cmd.exe /Q /c whoami 1> \\\\127.0.0.1\\ADMIN$\\__1787081572.6984355 2>&1\r\nParentUser: DESKTOP-IC9GOIC\\Brian\"",
+                        "version": "5",
+                        "systemTime": "2026-08-18T19:32:56.4232182Z",
+                        "eventRecordID": "17867",
+                        "threadID": "4932",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2912",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 12,
+                    "description": "Patrón de Impacket wmiexec.py: cmd.exe redirigiendo salida a ADMIN$\\__(timestamp) — ejecución remota vía WMI",
+                    "groups": [
+                      "local",
+                      "sysmon"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "Windows Management Instrumentation"
+                      ],
+                      "id": [
+                        "T1047"
+                      ],
+                      "tactic": [
+                        "Execution"
+                      ]
+                    },
+                    "id": "100070"
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-08-18T19:32:56.4232182Z\",\"eventRecordID\":\"17867\",\"processID\":\"2912\",\"threadID\":\"4932\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"DESKTOP-IC9GOIC\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: -\\r\\nUtcTime: 2026-08-18 19:32:56.417\\r\\nProcessGuid: {b4526b9f-b368-6a84-9102-000000001700}\\r\\nProcessId: 8820\\r\\nImage: C:\\\\Windows\\\\System32\\\\whoami.exe\\r\\nFileVersion: 10.0.19041.1 (WinBuild.160101.0800)\\r\\nDescription: whoami - displays logged on user information\\r\\nProduct: Microsoft® Windows® Operating System\\r\\nCompany: Microsoft Corporation\\r\\nOriginalFileName: whoami.exe\\r\\nCommandLine: whoami  \\r\\nCurrentDirectory: C:\\\\\\r\\nUser: DESKTOP-IC9GOIC\\\\Brian\\r\\nLogonGuid: {b4526b9f-b365-6a84-6fb2-6f0000000000}\\r\\nLogonId: 0x6FB26F\\r\\nTerminalSessionId: 0\\r\\nIntegrityLevel: High\\r\\nHashes: MD5=A4A6924F3EAF97981323703D38FD99C4,SHA256=1D4902A04D99E8CCBFE7085E63155955FEE397449D386453F6C452AE407B8743,IMPHASH=7FF0758B766F747CE57DFAC70743FB88\\r\\nParentProcessGuid: {b4526b9f-b368-6a84-8f02-000000001700}\\r\\nParentProcessId: 3852\\r\\nParentImage: C:\\\\Windows\\\\System32\\\\cmd.exe\\r\\nParentCommandLine: cmd.exe /Q /c whoami 1> \\\\\\\\127.0.0.1\\\\ADMIN$\\\\__1787081572.6984355 2>&1\\r\\nParentUser: DESKTOP-IC9GOIC\\\\Brian\\\"\"},\"eventdata\":{\"utcTime\":\"2026-08-18 19:32:56.417\",\"processGuid\":\"{b4526b9f-b368-6a84-9102-000000001700}\",\"processId\":\"8820\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\whoami.exe\",\"fileVersion\":\"10.0.19041.1 (WinBuild.160101.0800)\",\"description\":\"whoami - displays logged on user information\",\"product\":\"Microsoft® Windows® Operating System\",\"company\":\"Microsoft Corporation\",\"originalFileName\":\"whoami.exe\",\"commandLine\":\"whoami\",\"currentDirectory\":\"C:\\\\\\\\\",\"user\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\",\"logonGuid\":\"{b4526b9f-b365-6a84-6fb2-6f0000000000}\",\"logonId\":\"0x6fb26f\",\"terminalSessionId\":\"0\",\"integrityLevel\":\"High\",\"hashes\":\"MD5=A4A6924F3EAF97981323703D38FD99C4,SHA256=1D4902A04D99E8CCBFE7085E63155955FEE397449D386453F6C452AE407B8743,IMPHASH=7FF0758B766F747CE57DFAC70743FB88\",\"parentProcessGuid\":\"{b4526b9f-b368-6a84-8f02-000000001700}\",\"parentProcessId\":\"3852\",\"parentImage\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\cmd.exe\",\"parentCommandLine\":\"cmd.exe /Q /c whoami 1&gt; \\\\\\\\\\\\\\\\127.0.0.1\\\\\\\\ADMIN$\\\\\\\\__1787081572.6984355 2&gt;&amp;1\",\"parentUser\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\"}}}",
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-18T19:32:57.129Z",
+                  "location": "EventChannel",
+                  "id": "1787081577.1432162",
+                  "timestamp": "2026-08-18T19:32:57.129+0000"
+                },
+                "sort": [
+                  1787081577129
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.17",
+                "_id": "H6akEaABOE7y0ERqXZ-C",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "CertUtil.exe",
+                        "image": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\tcm.tmp",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-7e08-6a83-9402-000000001400}",
+                        "description": "CertUtil.exe",
+                        "logonGuid": "{b4526b9f-456a-6a83-b745-0a0000000000}",
+                        "parentCommandLine": "\\\"cmd.exe\\\" /c copy %windir%\\\\system32\\\\certutil.exe %temp%\\\\tcm.tmp &amp; %temp%\\\\tcm.tmp -encode C:\\\\Windows\\\\System32\\\\calc.exe %temp%\\\\T1140_calc2.txt &amp; %temp%\\\\tcm.tmp -decode %temp%\\\\T1140_calc2.txt %temp%\\\\T1140_calc2_decoded.exe",
+                        "processGuid": "{b4526b9f-7e09-6a83-9702-000000001400}",
+                        "logonId": "0xa45b7",
+                        "parentProcessId": "7316",
+                        "processId": "5816",
+                        "currentDirectory": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\",
+                        "utcTime": "2026-08-17 21:32:57.066",
+                        "hashes": "MD5=E6384AD54B07F9783135586C71F82D1C,SHA256=FD1670B43E2D9188B12B233780BF043C5A90A67A2C6E3FCDC564A5C246531BC2,IMPHASH=5AFC8346D5AFF4A4862E8A7C91042465",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\cmd.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\tcm.tmp  -decode C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\T1140_calc2.txt C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\T1140_calc2_decoded.exe",
+                        "integrityLevel": "High",
+                        "fileVersion": "10.0.19041.5794 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "DESKTOP-IC9GOIC\\\\Brian"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-17 21:32:57.066\r\nProcessGuid: {b4526b9f-7e09-6a83-9702-000000001400}\r\nProcessId: 5816\r\nImage: C:\\Users\\Brian\\AppData\\Local\\Temp\\tcm.tmp\r\nFileVersion: 10.0.19041.5794 (WinBuild.160101.0800)\r\nDescription: CertUtil.exe\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: CertUtil.exe\r\nCommandLine: C:\\Users\\Brian\\AppData\\Local\\Temp\\tcm.tmp  -decode C:\\Users\\Brian\\AppData\\Local\\Temp\\T1140_calc2.txt C:\\Users\\Brian\\AppData\\Local\\Temp\\T1140_calc2_decoded.exe\r\nCurrentDirectory: C:\\Users\\Brian\\AppData\\Local\\Temp\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-456a-6a83-b745-0a0000000000}\r\nLogonId: 0xA45B7\r\nTerminalSessionId: 1\r\nIntegrityLevel: High\r\nHashes: MD5=E6384AD54B07F9783135586C71F82D1C,SHA256=FD1670B43E2D9188B12B233780BF043C5A90A67A2C6E3FCDC564A5C246531BC2,IMPHASH=5AFC8346D5AFF4A4862E8A7C91042465\r\nParentProcessGuid: {b4526b9f-7e08-6a83-9402-000000001400}\r\nParentProcessId: 7316\r\nParentImage: C:\\Windows\\System32\\cmd.exe\r\nParentCommandLine: \"cmd.exe\" /c copy %windir%\\system32\\certutil.exe %temp%\\tcm.tmp & %temp%\\tcm.tmp -encode C:\\Windows\\System32\\calc.exe %temp%\\T1140_calc2.txt & %temp%\\tcm.tmp -decode %temp%\\T1140_calc2.txt %temp%\\T1140_calc2_decoded.exe\r\nParentUser: DESKTOP-IC9GOIC\\Brian\"",
+                        "version": "5",
+                        "systemTime": "2026-08-17T21:32:57.0732800Z",
+                        "eventRecordID": "15879",
+                        "threadID": "3900",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2528",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 13,
+                    "description": "Masqueraded CertUtil.exe used to decode binary file",
+                    "groups": [
+                      "sysmon",
+                      "sysmon_eid1_detections",
+                      "windows"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "Rename System Utilities",
+                        "Deobfuscate/Decode Files or Information"
+                      ],
+                      "id": [
+                        "T1036.003",
+                        "T1140"
+                      ],
+                      "tactic": [
+                        "Defense Evasion"
+                      ]
+                    },
+                    "id": "92017"
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-17T21:32:56.991Z",
+                  "location": "EventChannel",
+                  "id": "1787002376.11168681",
+                  "timestamp": "2026-08-17T21:32:56.991+0000"
+                },
+                "sort": [
+                  1787002376991
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.17",
+                "_id": "HqakEaABOE7y0ERqXZ-C",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "CertUtil.exe",
+                        "image": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\tcm.tmp",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-7e08-6a83-9402-000000001400}",
+                        "description": "CertUtil.exe",
+                        "logonGuid": "{b4526b9f-456a-6a83-b745-0a0000000000}",
+                        "parentCommandLine": "\\\"cmd.exe\\\" /c copy %windir%\\\\system32\\\\certutil.exe %temp%\\\\tcm.tmp &amp; %temp%\\\\tcm.tmp -encode C:\\\\Windows\\\\System32\\\\calc.exe %temp%\\\\T1140_calc2.txt &amp; %temp%\\\\tcm.tmp -decode %temp%\\\\T1140_calc2.txt %temp%\\\\T1140_calc2_decoded.exe",
+                        "processGuid": "{b4526b9f-7e08-6a83-9602-000000001400}",
+                        "logonId": "0xa45b7",
+                        "parentProcessId": "7316",
+                        "processId": "8140",
+                        "currentDirectory": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\",
+                        "utcTime": "2026-08-17 21:32:56.839",
+                        "hashes": "MD5=E6384AD54B07F9783135586C71F82D1C,SHA256=FD1670B43E2D9188B12B233780BF043C5A90A67A2C6E3FCDC564A5C246531BC2,IMPHASH=5AFC8346D5AFF4A4862E8A7C91042465",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\cmd.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\tcm.tmp  -encode C:\\\\Windows\\\\System32\\\\calc.exe C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\T1140_calc2.txt",
+                        "integrityLevel": "High",
+                        "fileVersion": "10.0.19041.5794 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "DESKTOP-IC9GOIC\\\\Brian"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-17 21:32:56.839\r\nProcessGuid: {b4526b9f-7e08-6a83-9602-000000001400}\r\nProcessId: 8140\r\nImage: C:\\Users\\Brian\\AppData\\Local\\Temp\\tcm.tmp\r\nFileVersion: 10.0.19041.5794 (WinBuild.160101.0800)\r\nDescription: CertUtil.exe\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: CertUtil.exe\r\nCommandLine: C:\\Users\\Brian\\AppData\\Local\\Temp\\tcm.tmp  -encode C:\\Windows\\System32\\calc.exe C:\\Users\\Brian\\AppData\\Local\\Temp\\T1140_calc2.txt \r\nCurrentDirectory: C:\\Users\\Brian\\AppData\\Local\\Temp\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-456a-6a83-b745-0a0000000000}\r\nLogonId: 0xA45B7\r\nTerminalSessionId: 1\r\nIntegrityLevel: High\r\nHashes: MD5=E6384AD54B07F9783135586C71F82D1C,SHA256=FD1670B43E2D9188B12B233780BF043C5A90A67A2C6E3FCDC564A5C246531BC2,IMPHASH=5AFC8346D5AFF4A4862E8A7C91042465\r\nParentProcessGuid: {b4526b9f-7e08-6a83-9402-000000001400}\r\nParentProcessId: 7316\r\nParentImage: C:\\Windows\\System32\\cmd.exe\r\nParentCommandLine: \"cmd.exe\" /c copy %windir%\\system32\\certutil.exe %temp%\\tcm.tmp & %temp%\\tcm.tmp -encode C:\\Windows\\System32\\calc.exe %temp%\\T1140_calc2.txt & %temp%\\tcm.tmp -decode %temp%\\T1140_calc2.txt %temp%\\T1140_calc2_decoded.exe\r\nParentUser: DESKTOP-IC9GOIC\\Brian\"",
+                        "version": "5",
+                        "systemTime": "2026-08-17T21:32:56.8516253Z",
+                        "eventRecordID": "15877",
+                        "threadID": "3900",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2528",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 13,
+                    "description": "Masqueraded CertUtil.exe with a different file name. Possible use to decode malware",
+                    "groups": [
+                      "sysmon",
+                      "sysmon_eid1_detections",
+                      "windows"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "Rename System Utilities",
+                        "Deobfuscate/Decode Files or Information"
+                      ],
+                      "id": [
+                        "T1036.003",
+                        "T1140"
+                      ],
+                      "tactic": [
+                        "Defense Evasion"
+                      ]
+                    },
+                    "id": "92016"
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-17T21:32:56.960Z",
+                  "location": "EventChannel",
+                  "id": "1787002376.11161770",
+                  "timestamp": "2026-08-17T21:32:56.960+0000"
+                },
+                "sort": [
+                  1787002376960
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.17",
+                "_id": "vaYmEaABOE7y0ERq-J72",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "EXPLORER.EXE",
+                        "image": "C:\\\\Windows\\\\explorer.exe",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-453d-6a83-0d00-000000001400}",
+                        "description": "Windows Explorer",
+                        "logonGuid": "{b4526b9f-456a-6a83-e645-0a0000000000}",
+                        "parentCommandLine": "C:\\\\Windows\\\\system32\\\\svchost.exe -k DcomLaunch -p",
+                        "processGuid": "{b4526b9f-5dee-6a83-fd01-000000001400}",
+                        "logonId": "0xa45e6",
+                        "parentProcessId": "812",
+                        "processId": "6600",
+                        "currentDirectory": "C:\\\\Windows\\\\system32\\\\",
+                        "utcTime": "2026-08-17 19:15:58.378",
+                        "hashes": "MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\svchost.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "C:\\\\Windows\\\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding",
+                        "integrityLevel": "Medium",
+                        "fileVersion": "10.0.19041.6456 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "NT AUTHORITY\\\\SYSTEM"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-17 19:15:58.378\r\nProcessGuid: {b4526b9f-5dee-6a83-fd01-000000001400}\r\nProcessId: 6600\r\nImage: C:\\Windows\\explorer.exe\r\nFileVersion: 10.0.19041.6456 (WinBuild.160101.0800)\r\nDescription: Windows Explorer\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: EXPLORER.EXE\r\nCommandLine: C:\\Windows\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding\r\nCurrentDirectory: C:\\Windows\\system32\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-456a-6a83-e645-0a0000000000}\r\nLogonId: 0xA45E6\r\nTerminalSessionId: 1\r\nIntegrityLevel: Medium\r\nHashes: MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC\r\nParentProcessGuid: {b4526b9f-453d-6a83-0d00-000000001400}\r\nParentProcessId: 812\r\nParentImage: C:\\Windows\\System32\\svchost.exe\r\nParentCommandLine: C:\\Windows\\system32\\svchost.exe -k DcomLaunch -p\r\nParentUser: NT AUTHORITY\\SYSTEM\"",
+                        "version": "5",
+                        "systemTime": "2026-08-17T19:15:58.3955346Z",
+                        "eventRecordID": "15768",
+                        "threadID": "3900",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2528",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 12,
+                    "pci_dss": [
+                      "10.6.1",
+                      "11.4"
+                    ],
+                    "hipaa": [
+                      "164.312.b"
+                    ],
+                    "tsc": [
+                      "CC7.2",
+                      "CC7.3",
+                      "CC6.1",
+                      "CC6.8"
+                    ],
+                    "description": "Sysmon - Suspicious Process - explorer.exe",
+                    "groups": [
+                      "windows",
+                      "sysmon",
+                      "sysmon_process-anomalies"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "Process Injection"
+                      ],
+                      "id": [
+                        "T1055"
+                      ],
+                      "tactic": [
+                        "Defense Evasion",
+                        "Privilege Escalation"
+                      ]
+                    },
+                    "id": "61640",
+                    "nist_800_53": [
+                      "AU.6",
+                      "SI.4"
+                    ],
+                    "gdpr": [
+                      "IV_35.7.d"
+                    ]
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-08-17T19:15:58.3955346Z\",\"eventRecordID\":\"15768\",\"processID\":\"2528\",\"threadID\":\"3900\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"DESKTOP-IC9GOIC\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: -\\r\\nUtcTime: 2026-08-17 19:15:58.378\\r\\nProcessGuid: {b4526b9f-5dee-6a83-fd01-000000001400}\\r\\nProcessId: 6600\\r\\nImage: C:\\\\Windows\\\\explorer.exe\\r\\nFileVersion: 10.0.19041.6456 (WinBuild.160101.0800)\\r\\nDescription: Windows Explorer\\r\\nProduct: Microsoft® Windows® Operating System\\r\\nCompany: Microsoft Corporation\\r\\nOriginalFileName: EXPLORER.EXE\\r\\nCommandLine: C:\\\\Windows\\\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding\\r\\nCurrentDirectory: C:\\\\Windows\\\\system32\\\\\\r\\nUser: DESKTOP-IC9GOIC\\\\Brian\\r\\nLogonGuid: {b4526b9f-456a-6a83-e645-0a0000000000}\\r\\nLogonId: 0xA45E6\\r\\nTerminalSessionId: 1\\r\\nIntegrityLevel: Medium\\r\\nHashes: MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC\\r\\nParentProcessGuid: {b4526b9f-453d-6a83-0d00-000000001400}\\r\\nParentProcessId: 812\\r\\nParentImage: C:\\\\Windows\\\\System32\\\\svchost.exe\\r\\nParentCommandLine: C:\\\\Windows\\\\system32\\\\svchost.exe -k DcomLaunch -p\\r\\nParentUser: NT AUTHORITY\\\\SYSTEM\\\"\"},\"eventdata\":{\"utcTime\":\"2026-08-17 19:15:58.378\",\"processGuid\":\"{b4526b9f-5dee-6a83-fd01-000000001400}\",\"processId\":\"6600\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\explorer.exe\",\"fileVersion\":\"10.0.19041.6456 (WinBuild.160101.0800)\",\"description\":\"Windows Explorer\",\"product\":\"Microsoft® Windows® Operating System\",\"company\":\"Microsoft Corporation\",\"originalFileName\":\"EXPLORER.EXE\",\"commandLine\":\"C:\\\\\\\\Windows\\\\\\\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding\",\"currentDirectory\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\\",\"user\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\",\"logonGuid\":\"{b4526b9f-456a-6a83-e645-0a0000000000}\",\"logonId\":\"0xa45e6\",\"terminalSessionId\":\"1\",\"integrityLevel\":\"Medium\",\"hashes\":\"MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC\",\"parentProcessGuid\":\"{b4526b9f-453d-6a83-0d00-000000001400}\",\"parentProcessId\":\"812\",\"parentImage\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\svchost.exe\",\"parentCommandLine\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\svchost.exe -k DcomLaunch -p\",\"parentUser\":\"NT AUTHORITY\\\\\\\\SYSTEM\"}}}",
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-17T19:15:59.300Z",
+                  "location": "EventChannel",
+                  "id": "1786994159.11038003",
+                  "timestamp": "2026-08-17T19:15:59.300+0000"
+                },
+                "sort": [
+                  1786994159300
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.17",
+                "_id": "kaYjEaABOE7y0ERqkZ66",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "gup.exe",
+                        "image": "C:\\\\AtomicRedTeam\\\\atomics\\\\T1574.002\\\\bin\\\\GUP.exe",
+                        "product": "WinGup for Notepad++",
+                        "parentProcessGuid": "{b4526b9f-5d0b-6a83-e701-000000001400}",
+                        "description": "WinGup for Notepad++",
+                        "logonGuid": "{b4526b9f-456a-6a83-b745-0a0000000000}",
+                        "parentCommandLine": "\\\"cmd.exe\\\" /c \\\"C:\\\\AtomicRedTeam\\\\atomics\\\\T1574.002\\\\bin\\\\GUP.exe\\\"",
+                        "processGuid": "{b4526b9f-5d0b-6a83-e901-000000001400}",
+                        "logonId": "0xa45b7",
+                        "parentProcessId": "5040",
+                        "processId": "9304",
+                        "currentDirectory": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\",
+                        "utcTime": "2026-08-17 19:12:11.042",
+                        "hashes": "MD5=67BAA5943AC95009ACC6D9EC46875462,SHA256=B94A58C21019D2CE2D1AB6C5A4D6229A88DD71C486C31F94C6C566E792DF7378,IMPHASH=69E374040C4B9D552FCF7CC67435E5C4",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\cmd.exe",
+                        "company": "Don HO don.h@free.fr",
+                        "commandLine": "C:\\\\AtomicRedTeam\\\\atomics\\\\T1574.002\\\\bin\\\\GUP.exe",
+                        "integrityLevel": "High",
+                        "fileVersion": "5.11",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "DESKTOP-IC9GOIC\\\\Brian"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-17 19:12:11.042\r\nProcessGuid: {b4526b9f-5d0b-6a83-e901-000000001400}\r\nProcessId: 9304\r\nImage: C:\\AtomicRedTeam\\atomics\\T1574.002\\bin\\GUP.exe\r\nFileVersion: 5.11\r\nDescription: WinGup for Notepad++\r\nProduct: WinGup for Notepad++\r\nCompany: Don HO don.h@free.fr\r\nOriginalFileName: gup.exe\r\nCommandLine: C:\\AtomicRedTeam\\atomics\\T1574.002\\bin\\GUP.exe\r\nCurrentDirectory: C:\\Users\\Brian\\AppData\\Local\\Temp\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-456a-6a83-b745-0a0000000000}\r\nLogonId: 0xA45B7\r\nTerminalSessionId: 1\r\nIntegrityLevel: High\r\nHashes: MD5=67BAA5943AC95009ACC6D9EC46875462,SHA256=B94A58C21019D2CE2D1AB6C5A4D6229A88DD71C486C31F94C6C566E792DF7378,IMPHASH=69E374040C4B9D552FCF7CC67435E5C4\r\nParentProcessGuid: {b4526b9f-5d0b-6a83-e701-000000001400}\r\nParentProcessId: 5040\r\nParentImage: C:\\Windows\\System32\\cmd.exe\r\nParentCommandLine: \"cmd.exe\" /c \"C:\\AtomicRedTeam\\atomics\\T1574.002\\bin\\GUP.exe\"\r\nParentUser: DESKTOP-IC9GOIC\\Brian\"",
+                        "version": "5",
+                        "systemTime": "2026-08-17T19:12:11.0473449Z",
+                        "eventRecordID": "15727",
+                        "threadID": "3900",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2528",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 12,
+                    "description": "GUP.exe (actualizador legítimo de Notepad++) ejecutándose fuera de su carpeta de instalación esperada — indicio de DLL Side-Loading/masquerading",
+                    "groups": [
+                      "local",
+                      "sysmon"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "DLL Search Order Hijacking"
+                      ],
+                      "id": [
+                        "T1574.001"
+                      ],
+                      "tactic": [
+                        "Persistence",
+                        "Privilege Escalation",
+                        "Defense Evasion"
+                      ]
+                    },
+                    "id": "100060"
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-08-17T19:12:11.0473449Z\",\"eventRecordID\":\"15727\",\"processID\":\"2528\",\"threadID\":\"3900\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"DESKTOP-IC9GOIC\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: -\\r\\nUtcTime: 2026-08-17 19:12:11.042\\r\\nProcessGuid: {b4526b9f-5d0b-6a83-e901-000000001400}\\r\\nProcessId: 9304\\r\\nImage: C:\\\\AtomicRedTeam\\\\atomics\\\\T1574.002\\\\bin\\\\GUP.exe\\r\\nFileVersion: 5.11\\r\\nDescription: WinGup for Notepad++\\r\\nProduct: WinGup for Notepad++\\r\\nCompany: Don HO don.h@free.fr\\r\\nOriginalFileName: gup.exe\\r\\nCommandLine: C:\\\\AtomicRedTeam\\\\atomics\\\\T1574.002\\\\bin\\\\GUP.exe\\r\\nCurrentDirectory: C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\\\r\\nUser: DESKTOP-IC9GOIC\\\\Brian\\r\\nLogonGuid: {b4526b9f-456a-6a83-b745-0a0000000000}\\r\\nLogonId: 0xA45B7\\r\\nTerminalSessionId: 1\\r\\nIntegrityLevel: High\\r\\nHashes: MD5=67BAA5943AC95009ACC6D9EC46875462,SHA256=B94A58C21019D2CE2D1AB6C5A4D6229A88DD71C486C31F94C6C566E792DF7378,IMPHASH=69E374040C4B9D552FCF7CC67435E5C4\\r\\nParentProcessGuid: {b4526b9f-5d0b-6a83-e701-000000001400}\\r\\nParentProcessId: 5040\\r\\nParentImage: C:\\\\Windows\\\\System32\\\\cmd.exe\\r\\nParentCommandLine: \\\"cmd.exe\\\" /c \\\"C:\\\\AtomicRedTeam\\\\atomics\\\\T1574.002\\\\bin\\\\GUP.exe\\\"\\r\\nParentUser: DESKTOP-IC9GOIC\\\\Brian\\\"\"},\"eventdata\":{\"utcTime\":\"2026-08-17 19:12:11.042\",\"processGuid\":\"{b4526b9f-5d0b-6a83-e901-000000001400}\",\"processId\":\"9304\",\"image\":\"C:\\\\\\\\AtomicRedTeam\\\\\\\\atomics\\\\\\\\T1574.002\\\\\\\\bin\\\\\\\\GUP.exe\",\"fileVersion\":\"5.11\",\"description\":\"WinGup for Notepad++\",\"product\":\"WinGup for Notepad++\",\"company\":\"Don HO don.h@free.fr\",\"originalFileName\":\"gup.exe\",\"commandLine\":\"C:\\\\\\\\AtomicRedTeam\\\\\\\\atomics\\\\\\\\T1574.002\\\\\\\\bin\\\\\\\\GUP.exe\",\"currentDirectory\":\"C:\\\\\\\\Users\\\\\\\\Brian\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\\",\"user\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\",\"logonGuid\":\"{b4526b9f-456a-6a83-b745-0a0000000000}\",\"logonId\":\"0xa45b7\",\"terminalSessionId\":\"1\",\"integrityLevel\":\"High\",\"hashes\":\"MD5=67BAA5943AC95009ACC6D9EC46875462,SHA256=B94A58C21019D2CE2D1AB6C5A4D6229A88DD71C486C31F94C6C566E792DF7378,IMPHASH=69E374040C4B9D552FCF7CC67435E5C4\",\"parentProcessGuid\":\"{b4526b9f-5d0b-6a83-e701-000000001400}\",\"parentProcessId\":\"5040\",\"parentImage\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\cmd.exe\",\"parentCommandLine\":\"\\\\\\\"cmd.exe\\\\\\\" /c \\\\\\\"C:\\\\\\\\AtomicRedTeam\\\\\\\\atomics\\\\\\\\T1574.002\\\\\\\\bin\\\\\\\\GUP.exe\\\\\\\"\",\"parentUser\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\"}}}",
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-17T19:12:11.802Z",
+                  "location": "EventChannel",
+                  "id": "1786993931.9746000",
+                  "timestamp": "2026-08-17T19:12:11.802+0000"
+                },
+                "sort": [
+                  1786993931802
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.17",
+                "_id": "maaREKABOE7y0ERq6pkB",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "schtasks.exe",
+                        "image": "C:\\\\Windows\\\\System32\\\\schtasks.exe",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-37c2-6a83-5803-000000001100}",
+                        "description": "Task Scheduler Configuration Tool",
+                        "logonGuid": "{b4526b9f-1389-6a83-ed15-070000000000}",
+                        "parentCommandLine": "\\\"cmd.exe\\\" /c schtasks /create /tn \\\"T1053_005_OnLogon\\\" /sc onlogon /tr \\\"cmd.exe /c calc.exe\\\" &amp; schtasks /create /tn \\\"T1053_005_OnStartup\\\" /sc onstart /ru system /tr \\\"cmd.exe /c calc.exe\\\"",
+                        "processGuid": "{b4526b9f-37c2-6a83-5a03-000000001100}",
+                        "logonId": "0x715ed",
+                        "parentProcessId": "9108",
+                        "processId": "7184",
+                        "currentDirectory": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\",
+                        "utcTime": "2026-08-17 16:33:06.865",
+                        "hashes": "MD5=2C400322E4F96C1FEDB0F890C7668C92,SHA256=2327E073DCF25AE03DC851EA0F3414980D3168FA959F42C5F77BE1381AE6C41D,IMPHASH=7C296BC1AA0738F0783F000C5982A642",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\cmd.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "schtasks  /create /tn \\\"T1053_005_OnLogon\\\" /sc onlogon /tr \\\"cmd.exe /c calc.exe\\\"",
+                        "integrityLevel": "High",
+                        "fileVersion": "10.0.19041.5965 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "DESKTOP-IC9GOIC\\\\Brian"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-17 16:33:06.865\r\nProcessGuid: {b4526b9f-37c2-6a83-5a03-000000001100}\r\nProcessId: 7184\r\nImage: C:\\Windows\\System32\\schtasks.exe\r\nFileVersion: 10.0.19041.5965 (WinBuild.160101.0800)\r\nDescription: Task Scheduler Configuration Tool\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: schtasks.exe\r\nCommandLine: schtasks  /create /tn \"T1053_005_OnLogon\" /sc onlogon /tr \"cmd.exe /c calc.exe\" \r\nCurrentDirectory: C:\\Users\\Brian\\AppData\\Local\\Temp\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-1389-6a83-ed15-070000000000}\r\nLogonId: 0x715ED\r\nTerminalSessionId: 1\r\nIntegrityLevel: High\r\nHashes: MD5=2C400322E4F96C1FEDB0F890C7668C92,SHA256=2327E073DCF25AE03DC851EA0F3414980D3168FA959F42C5F77BE1381AE6C41D,IMPHASH=7C296BC1AA0738F0783F000C5982A642\r\nParentProcessGuid: {b4526b9f-37c2-6a83-5803-000000001100}\r\nParentProcessId: 9108\r\nParentImage: C:\\Windows\\System32\\cmd.exe\r\nParentCommandLine: \"cmd.exe\" /c schtasks /create /tn \"T1053_005_OnLogon\" /sc onlogon /tr \"cmd.exe /c calc.exe\" & schtasks /create /tn \"T1053_005_OnStartup\" /sc onstart /ru system /tr \"cmd.exe /c calc.exe\"\r\nParentUser: DESKTOP-IC9GOIC\\Brian\"",
+                        "version": "5",
+                        "systemTime": "2026-08-17T16:33:06.8728319Z",
+                        "eventRecordID": "14293",
+                        "threadID": "5188",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2844",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 12,
+                    "description": "Creación de tarea programada que ejecuta un intérprete de comandos o LOLBin — patrón común de persistencia",
+                    "groups": [
+                      "local",
+                      "sysmon"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "Scheduled Task"
+                      ],
+                      "id": [
+                        "T1053.005"
+                      ],
+                      "tactic": [
+                        "Execution",
+                        "Persistence",
+                        "Privilege Escalation"
+                      ]
+                    },
+                    "id": "100050"
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-08-17T16:33:06.8728319Z\",\"eventRecordID\":\"14293\",\"processID\":\"2844\",\"threadID\":\"5188\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"DESKTOP-IC9GOIC\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: -\\r\\nUtcTime: 2026-08-17 16:33:06.865\\r\\nProcessGuid: {b4526b9f-37c2-6a83-5a03-000000001100}\\r\\nProcessId: 7184\\r\\nImage: C:\\\\Windows\\\\System32\\\\schtasks.exe\\r\\nFileVersion: 10.0.19041.5965 (WinBuild.160101.0800)\\r\\nDescription: Task Scheduler Configuration Tool\\r\\nProduct: Microsoft® Windows® Operating System\\r\\nCompany: Microsoft Corporation\\r\\nOriginalFileName: schtasks.exe\\r\\nCommandLine: schtasks  /create /tn \\\"T1053_005_OnLogon\\\" /sc onlogon /tr \\\"cmd.exe /c calc.exe\\\" \\r\\nCurrentDirectory: C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\\\r\\nUser: DESKTOP-IC9GOIC\\\\Brian\\r\\nLogonGuid: {b4526b9f-1389-6a83-ed15-070000000000}\\r\\nLogonId: 0x715ED\\r\\nTerminalSessionId: 1\\r\\nIntegrityLevel: High\\r\\nHashes: MD5=2C400322E4F96C1FEDB0F890C7668C92,SHA256=2327E073DCF25AE03DC851EA0F3414980D3168FA959F42C5F77BE1381AE6C41D,IMPHASH=7C296BC1AA0738F0783F000C5982A642\\r\\nParentProcessGuid: {b4526b9f-37c2-6a83-5803-000000001100}\\r\\nParentProcessId: 9108\\r\\nParentImage: C:\\\\Windows\\\\System32\\\\cmd.exe\\r\\nParentCommandLine: \\\"cmd.exe\\\" /c schtasks /create /tn \\\"T1053_005_OnLogon\\\" /sc onlogon /tr \\\"cmd.exe /c calc.exe\\\" & schtasks /create /tn \\\"T1053_005_OnStartup\\\" /sc onstart /ru system /tr \\\"cmd.exe /c calc.exe\\\"\\r\\nParentUser: DESKTOP-IC9GOIC\\\\Brian\\\"\"},\"eventdata\":{\"utcTime\":\"2026-08-17 16:33:06.865\",\"processGuid\":\"{b4526b9f-37c2-6a83-5a03-000000001100}\",\"processId\":\"7184\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\schtasks.exe\",\"fileVersion\":\"10.0.19041.5965 (WinBuild.160101.0800)\",\"description\":\"Task Scheduler Configuration Tool\",\"product\":\"Microsoft® Windows® Operating System\",\"company\":\"Microsoft Corporation\",\"originalFileName\":\"schtasks.exe\",\"commandLine\":\"schtasks  /create /tn \\\\\\\"T1053_005_OnLogon\\\\\\\" /sc onlogon /tr \\\\\\\"cmd.exe /c calc.exe\\\\\\\"\",\"currentDirectory\":\"C:\\\\\\\\Users\\\\\\\\Brian\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\\",\"user\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\",\"logonGuid\":\"{b4526b9f-1389-6a83-ed15-070000000000}\",\"logonId\":\"0x715ed\",\"terminalSessionId\":\"1\",\"integrityLevel\":\"High\",\"hashes\":\"MD5=2C400322E4F96C1FEDB0F890C7668C92,SHA256=2327E073DCF25AE03DC851EA0F3414980D3168FA959F42C5F77BE1381AE6C41D,IMPHASH=7C296BC1AA0738F0783F000C5982A642\",\"parentProcessGuid\":\"{b4526b9f-37c2-6a83-5803-000000001100}\",\"parentProcessId\":\"9108\",\"parentImage\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\cmd.exe\",\"parentCommandLine\":\"\\\\\\\"cmd.exe\\\\\\\" /c schtasks /create /tn \\\\\\\"T1053_005_OnLogon\\\\\\\" /sc onlogon /tr \\\\\\\"cmd.exe /c calc.exe\\\\\\\" &amp; schtasks /create /tn \\\\\\\"T1053_005_OnStartup\\\\\\\" /sc onstart /ru system /tr \\\\\\\"cmd.exe /c calc.exe\\\\\\\"\",\"parentUser\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\"}}}",
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-17T16:33:09.405Z",
+                  "location": "EventChannel",
+                  "id": "1786984389.6022598",
+                  "timestamp": "2026-08-17T16:33:09.405+0000"
+                },
+                "sort": [
+                  1786984389405
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.17",
+                "_id": "16ZBEKABOE7y0ERq6JhE",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "EXPLORER.EXE",
+                        "image": "C:\\\\Windows\\\\explorer.exe",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-1301-6a83-0d00-000000001100}",
+                        "description": "Windows Explorer",
+                        "logonGuid": "{b4526b9f-1389-6a83-3516-070000000000}",
+                        "parentCommandLine": "C:\\\\Windows\\\\system32\\\\svchost.exe -k DcomLaunch -p",
+                        "processGuid": "{b4526b9f-2347-6a83-7702-000000001100}",
+                        "logonId": "0x71635",
+                        "parentProcessId": "808",
+                        "processId": "4988",
+                        "currentDirectory": "C:\\\\Windows\\\\system32\\\\",
+                        "utcTime": "2026-08-17 15:05:43.591",
+                        "hashes": "MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\svchost.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "C:\\\\Windows\\\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding",
+                        "integrityLevel": "Medium",
+                        "fileVersion": "10.0.19041.6456 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "NT AUTHORITY\\\\SYSTEM"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-17 15:05:43.591\r\nProcessGuid: {b4526b9f-2347-6a83-7702-000000001100}\r\nProcessId: 4988\r\nImage: C:\\Windows\\explorer.exe\r\nFileVersion: 10.0.19041.6456 (WinBuild.160101.0800)\r\nDescription: Windows Explorer\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: EXPLORER.EXE\r\nCommandLine: C:\\Windows\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding\r\nCurrentDirectory: C:\\Windows\\system32\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-1389-6a83-3516-070000000000}\r\nLogonId: 0x71635\r\nTerminalSessionId: 1\r\nIntegrityLevel: Medium\r\nHashes: MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC\r\nParentProcessGuid: {b4526b9f-1301-6a83-0d00-000000001100}\r\nParentProcessId: 808\r\nParentImage: C:\\Windows\\System32\\svchost.exe\r\nParentCommandLine: C:\\Windows\\system32\\svchost.exe -k DcomLaunch -p\r\nParentUser: NT AUTHORITY\\SYSTEM\"",
+                        "version": "5",
+                        "systemTime": "2026-08-17T15:05:43.5927480Z",
+                        "eventRecordID": "14004",
+                        "threadID": "5188",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2844",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 12,
+                    "pci_dss": [
+                      "10.6.1",
+                      "11.4"
+                    ],
+                    "hipaa": [
+                      "164.312.b"
+                    ],
+                    "tsc": [
+                      "CC7.2",
+                      "CC7.3",
+                      "CC6.1",
+                      "CC6.8"
+                    ],
+                    "description": "Sysmon - Suspicious Process - explorer.exe",
+                    "groups": [
+                      "windows",
+                      "sysmon",
+                      "sysmon_process-anomalies"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "Process Injection"
+                      ],
+                      "id": [
+                        "T1055"
+                      ],
+                      "tactic": [
+                        "Defense Evasion",
+                        "Privilege Escalation"
+                      ]
+                    },
+                    "id": "61640",
+                    "nist_800_53": [
+                      "AU.6",
+                      "SI.4"
+                    ],
+                    "gdpr": [
+                      "IV_35.7.d"
+                    ]
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-08-17T15:05:43.5927480Z\",\"eventRecordID\":\"14004\",\"processID\":\"2844\",\"threadID\":\"5188\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"DESKTOP-IC9GOIC\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: -\\r\\nUtcTime: 2026-08-17 15:05:43.591\\r\\nProcessGuid: {b4526b9f-2347-6a83-7702-000000001100}\\r\\nProcessId: 4988\\r\\nImage: C:\\\\Windows\\\\explorer.exe\\r\\nFileVersion: 10.0.19041.6456 (WinBuild.160101.0800)\\r\\nDescription: Windows Explorer\\r\\nProduct: Microsoft® Windows® Operating System\\r\\nCompany: Microsoft Corporation\\r\\nOriginalFileName: EXPLORER.EXE\\r\\nCommandLine: C:\\\\Windows\\\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding\\r\\nCurrentDirectory: C:\\\\Windows\\\\system32\\\\\\r\\nUser: DESKTOP-IC9GOIC\\\\Brian\\r\\nLogonGuid: {b4526b9f-1389-6a83-3516-070000000000}\\r\\nLogonId: 0x71635\\r\\nTerminalSessionId: 1\\r\\nIntegrityLevel: Medium\\r\\nHashes: MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC\\r\\nParentProcessGuid: {b4526b9f-1301-6a83-0d00-000000001100}\\r\\nParentProcessId: 808\\r\\nParentImage: C:\\\\Windows\\\\System32\\\\svchost.exe\\r\\nParentCommandLine: C:\\\\Windows\\\\system32\\\\svchost.exe -k DcomLaunch -p\\r\\nParentUser: NT AUTHORITY\\\\SYSTEM\\\"\"},\"eventdata\":{\"utcTime\":\"2026-08-17 15:05:43.591\",\"processGuid\":\"{b4526b9f-2347-6a83-7702-000000001100}\",\"processId\":\"4988\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\explorer.exe\",\"fileVersion\":\"10.0.19041.6456 (WinBuild.160101.0800)\",\"description\":\"Windows Explorer\",\"product\":\"Microsoft® Windows® Operating System\",\"company\":\"Microsoft Corporation\",\"originalFileName\":\"EXPLORER.EXE\",\"commandLine\":\"C:\\\\\\\\Windows\\\\\\\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding\",\"currentDirectory\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\\",\"user\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\",\"logonGuid\":\"{b4526b9f-1389-6a83-3516-070000000000}\",\"logonId\":\"0x71635\",\"terminalSessionId\":\"1\",\"integrityLevel\":\"Medium\",\"hashes\":\"MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC\",\"parentProcessGuid\":\"{b4526b9f-1301-6a83-0d00-000000001100}\",\"parentProcessId\":\"808\",\"parentImage\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\svchost.exe\",\"parentCommandLine\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\svchost.exe -k DcomLaunch -p\",\"parentUser\":\"NT AUTHORITY\\\\\\\\SYSTEM\"}}}",
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-17T15:05:46.662Z",
+                  "location": "EventChannel",
+                  "id": "1786979146.5509373",
+                  "timestamp": "2026-08-17T15:05:46.662+0000"
+                },
+                "sort": [
+                  1786979146662
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.17",
+                "_id": "laY1EKABOE7y0ERqYZgg",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "EXPLORER.EXE",
+                        "image": "C:\\\\Windows\\\\explorer.exe",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-1301-6a83-0d00-000000001100}",
+                        "description": "Windows Explorer",
+                        "logonGuid": "{b4526b9f-1389-6a83-3516-070000000000}",
+                        "parentCommandLine": "C:\\\\Windows\\\\system32\\\\svchost.exe -k DcomLaunch -p",
+                        "processGuid": "{b4526b9f-2013-6a83-4802-000000001100}",
+                        "logonId": "0x71635",
+                        "parentProcessId": "808",
+                        "processId": "3628",
+                        "currentDirectory": "C:\\\\Windows\\\\system32\\\\",
+                        "utcTime": "2026-08-17 14:52:03.941",
+                        "hashes": "MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\svchost.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "C:\\\\Windows\\\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding",
+                        "integrityLevel": "Medium",
+                        "fileVersion": "10.0.19041.6456 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "NT AUTHORITY\\\\SYSTEM"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-17 14:52:03.941\r\nProcessGuid: {b4526b9f-2013-6a83-4802-000000001100}\r\nProcessId: 3628\r\nImage: C:\\Windows\\explorer.exe\r\nFileVersion: 10.0.19041.6456 (WinBuild.160101.0800)\r\nDescription: Windows Explorer\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: EXPLORER.EXE\r\nCommandLine: C:\\Windows\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding\r\nCurrentDirectory: C:\\Windows\\system32\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-1389-6a83-3516-070000000000}\r\nLogonId: 0x71635\r\nTerminalSessionId: 1\r\nIntegrityLevel: Medium\r\nHashes: MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC\r\nParentProcessGuid: {b4526b9f-1301-6a83-0d00-000000001100}\r\nParentProcessId: 808\r\nParentImage: C:\\Windows\\System32\\svchost.exe\r\nParentCommandLine: C:\\Windows\\system32\\svchost.exe -k DcomLaunch -p\r\nParentUser: NT AUTHORITY\\SYSTEM\"",
+                        "version": "5",
+                        "systemTime": "2026-08-17T14:52:03.9424949Z",
+                        "eventRecordID": "13927",
+                        "threadID": "5188",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2844",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 2,
+                    "mail": true,
+                    "level": 12,
+                    "pci_dss": [
+                      "10.6.1",
+                      "11.4"
+                    ],
+                    "hipaa": [
+                      "164.312.b"
+                    ],
+                    "tsc": [
+                      "CC7.2",
+                      "CC7.3",
+                      "CC6.1",
+                      "CC6.8"
+                    ],
+                    "description": "Sysmon - Suspicious Process - explorer.exe",
+                    "groups": [
+                      "windows",
+                      "sysmon",
+                      "sysmon_process-anomalies"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "Process Injection"
+                      ],
+                      "id": [
+                        "T1055"
+                      ],
+                      "tactic": [
+                        "Defense Evasion",
+                        "Privilege Escalation"
+                      ]
+                    },
+                    "id": "61640",
+                    "nist_800_53": [
+                      "AU.6",
+                      "SI.4"
+                    ],
+                    "gdpr": [
+                      "IV_35.7.d"
+                    ]
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-08-17T14:52:03.9424949Z\",\"eventRecordID\":\"13927\",\"processID\":\"2844\",\"threadID\":\"5188\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"DESKTOP-IC9GOIC\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: -\\r\\nUtcTime: 2026-08-17 14:52:03.941\\r\\nProcessGuid: {b4526b9f-2013-6a83-4802-000000001100}\\r\\nProcessId: 3628\\r\\nImage: C:\\\\Windows\\\\explorer.exe\\r\\nFileVersion: 10.0.19041.6456 (WinBuild.160101.0800)\\r\\nDescription: Windows Explorer\\r\\nProduct: Microsoft® Windows® Operating System\\r\\nCompany: Microsoft Corporation\\r\\nOriginalFileName: EXPLORER.EXE\\r\\nCommandLine: C:\\\\Windows\\\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding\\r\\nCurrentDirectory: C:\\\\Windows\\\\system32\\\\\\r\\nUser: DESKTOP-IC9GOIC\\\\Brian\\r\\nLogonGuid: {b4526b9f-1389-6a83-3516-070000000000}\\r\\nLogonId: 0x71635\\r\\nTerminalSessionId: 1\\r\\nIntegrityLevel: Medium\\r\\nHashes: MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC\\r\\nParentProcessGuid: {b4526b9f-1301-6a83-0d00-000000001100}\\r\\nParentProcessId: 808\\r\\nParentImage: C:\\\\Windows\\\\System32\\\\svchost.exe\\r\\nParentCommandLine: C:\\\\Windows\\\\system32\\\\svchost.exe -k DcomLaunch -p\\r\\nParentUser: NT AUTHORITY\\\\SYSTEM\\\"\"},\"eventdata\":{\"utcTime\":\"2026-08-17 14:52:03.941\",\"processGuid\":\"{b4526b9f-2013-6a83-4802-000000001100}\",\"processId\":\"3628\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\explorer.exe\",\"fileVersion\":\"10.0.19041.6456 (WinBuild.160101.0800)\",\"description\":\"Windows Explorer\",\"product\":\"Microsoft® Windows® Operating System\",\"company\":\"Microsoft Corporation\",\"originalFileName\":\"EXPLORER.EXE\",\"commandLine\":\"C:\\\\\\\\Windows\\\\\\\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding\",\"currentDirectory\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\\",\"user\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\",\"logonGuid\":\"{b4526b9f-1389-6a83-3516-070000000000}\",\"logonId\":\"0x71635\",\"terminalSessionId\":\"1\",\"integrityLevel\":\"Medium\",\"hashes\":\"MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC\",\"parentProcessGuid\":\"{b4526b9f-1301-6a83-0d00-000000001100}\",\"parentProcessId\":\"808\",\"parentImage\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\svchost.exe\",\"parentCommandLine\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\svchost.exe -k DcomLaunch -p\",\"parentUser\":\"NT AUTHORITY\\\\\\\\SYSTEM\"}}}",
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-17T14:52:07.066Z",
+                  "location": "EventChannel",
+                  "id": "1786978327.4134260",
+                  "timestamp": "2026-08-17T14:52:07.066+0000"
+                },
+                "sort": [
+                  1786978327066
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.17",
+                "_id": "baY0EKABOE7y0ERqLJh7",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "EXPLORER.EXE",
+                        "image": "C:\\\\Windows\\\\explorer.exe",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-1301-6a83-0d00-000000001100}",
+                        "description": "Windows Explorer",
+                        "logonGuid": "{b4526b9f-1389-6a83-3516-070000000000}",
+                        "parentCommandLine": "C:\\\\Windows\\\\system32\\\\svchost.exe -k DcomLaunch -p",
+                        "processGuid": "{b4526b9f-1fc4-6a83-3102-000000001100}",
+                        "logonId": "0x71635",
+                        "parentProcessId": "808",
+                        "processId": "1692",
+                        "currentDirectory": "C:\\\\Windows\\\\system32\\\\",
+                        "utcTime": "2026-08-17 14:50:44.783",
+                        "hashes": "MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\svchost.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "C:\\\\Windows\\\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding",
+                        "integrityLevel": "Medium",
+                        "fileVersion": "10.0.19041.6456 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "NT AUTHORITY\\\\SYSTEM"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-17 14:50:44.783\r\nProcessGuid: {b4526b9f-1fc4-6a83-3102-000000001100}\r\nProcessId: 1692\r\nImage: C:\\Windows\\explorer.exe\r\nFileVersion: 10.0.19041.6456 (WinBuild.160101.0800)\r\nDescription: Windows Explorer\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: EXPLORER.EXE\r\nCommandLine: C:\\Windows\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding\r\nCurrentDirectory: C:\\Windows\\system32\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-1389-6a83-3516-070000000000}\r\nLogonId: 0x71635\r\nTerminalSessionId: 1\r\nIntegrityLevel: Medium\r\nHashes: MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC\r\nParentProcessGuid: {b4526b9f-1301-6a83-0d00-000000001100}\r\nParentProcessId: 808\r\nParentImage: C:\\Windows\\System32\\svchost.exe\r\nParentCommandLine: C:\\Windows\\system32\\svchost.exe -k DcomLaunch -p\r\nParentUser: NT AUTHORITY\\SYSTEM\"",
+                        "version": "5",
+                        "systemTime": "2026-08-17T14:50:44.8000182Z",
+                        "eventRecordID": "13879",
+                        "threadID": "5188",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2844",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 12,
+                    "pci_dss": [
+                      "10.6.1",
+                      "11.4"
+                    ],
+                    "hipaa": [
+                      "164.312.b"
+                    ],
+                    "tsc": [
+                      "CC7.2",
+                      "CC7.3",
+                      "CC6.1",
+                      "CC6.8"
+                    ],
+                    "description": "Sysmon - Suspicious Process - explorer.exe",
+                    "groups": [
+                      "windows",
+                      "sysmon",
+                      "sysmon_process-anomalies"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "Process Injection"
+                      ],
+                      "id": [
+                        "T1055"
+                      ],
+                      "tactic": [
+                        "Defense Evasion",
+                        "Privilege Escalation"
+                      ]
+                    },
+                    "id": "61640",
+                    "nist_800_53": [
+                      "AU.6",
+                      "SI.4"
+                    ],
+                    "gdpr": [
+                      "IV_35.7.d"
+                    ]
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-08-17T14:50:44.8000182Z\",\"eventRecordID\":\"13879\",\"processID\":\"2844\",\"threadID\":\"5188\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"DESKTOP-IC9GOIC\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: -\\r\\nUtcTime: 2026-08-17 14:50:44.783\\r\\nProcessGuid: {b4526b9f-1fc4-6a83-3102-000000001100}\\r\\nProcessId: 1692\\r\\nImage: C:\\\\Windows\\\\explorer.exe\\r\\nFileVersion: 10.0.19041.6456 (WinBuild.160101.0800)\\r\\nDescription: Windows Explorer\\r\\nProduct: Microsoft® Windows® Operating System\\r\\nCompany: Microsoft Corporation\\r\\nOriginalFileName: EXPLORER.EXE\\r\\nCommandLine: C:\\\\Windows\\\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding\\r\\nCurrentDirectory: C:\\\\Windows\\\\system32\\\\\\r\\nUser: DESKTOP-IC9GOIC\\\\Brian\\r\\nLogonGuid: {b4526b9f-1389-6a83-3516-070000000000}\\r\\nLogonId: 0x71635\\r\\nTerminalSessionId: 1\\r\\nIntegrityLevel: Medium\\r\\nHashes: MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC\\r\\nParentProcessGuid: {b4526b9f-1301-6a83-0d00-000000001100}\\r\\nParentProcessId: 808\\r\\nParentImage: C:\\\\Windows\\\\System32\\\\svchost.exe\\r\\nParentCommandLine: C:\\\\Windows\\\\system32\\\\svchost.exe -k DcomLaunch -p\\r\\nParentUser: NT AUTHORITY\\\\SYSTEM\\\"\"},\"eventdata\":{\"utcTime\":\"2026-08-17 14:50:44.783\",\"processGuid\":\"{b4526b9f-1fc4-6a83-3102-000000001100}\",\"processId\":\"1692\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\explorer.exe\",\"fileVersion\":\"10.0.19041.6456 (WinBuild.160101.0800)\",\"description\":\"Windows Explorer\",\"product\":\"Microsoft® Windows® Operating System\",\"company\":\"Microsoft Corporation\",\"originalFileName\":\"EXPLORER.EXE\",\"commandLine\":\"C:\\\\\\\\Windows\\\\\\\\explorer.exe /factory,{75dff2b7-6936-4c06-a8bb-676a7b00b24b} -Embedding\",\"currentDirectory\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\\",\"user\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\",\"logonGuid\":\"{b4526b9f-1389-6a83-3516-070000000000}\",\"logonId\":\"0x71635\",\"terminalSessionId\":\"1\",\"integrityLevel\":\"Medium\",\"hashes\":\"MD5=24AD59ABAF730E71BC865922D8596008,SHA256=988A56D897915315EEF9CA679B3BC8ADFCECF5E227AEA99AAA1817620520E97E,IMPHASH=DBCE632ECED8243CB6090C1C87BE56BC\",\"parentProcessGuid\":\"{b4526b9f-1301-6a83-0d00-000000001100}\",\"parentProcessId\":\"808\",\"parentImage\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\svchost.exe\",\"parentCommandLine\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\svchost.exe -k DcomLaunch -p\",\"parentUser\":\"NT AUTHORITY\\\\\\\\SYSTEM\"}}}",
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-17T14:50:47.865Z",
+                  "location": "EventChannel",
+                  "id": "1786978247.2888600",
+                  "timestamp": "2026-08-17T14:50:47.865+0000"
+                },
+                "sort": [
+                  1786978247865
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.17",
+                "_id": "E6YZEKABOE7y0ERqopjF",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "REGSVR32.EXE",
+                        "image": "C:\\\\Windows\\\\System32\\\\regsvr32.exe",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-18f7-6a83-c801-000000001100}",
+                        "description": "Microsoft(C) Register Server",
+                        "logonGuid": "{b4526b9f-1389-6a83-ed15-070000000000}",
+                        "parentCommandLine": "\\\"cmd.exe\\\" /c C:\\\\Windows\\\\system32\\\\regsvr32.exe /s /u /i:\\\"C:\\\\AtomicRedTeam\\\\atomics\\\\T1218.010\\\\src\\\\RegSvr32.sct\\\" scrobj.dll",
+                        "processGuid": "{b4526b9f-18f7-6a83-ca01-000000001100}",
+                        "logonId": "0x715ed",
+                        "parentProcessId": "8184",
+                        "processId": "6608",
+                        "currentDirectory": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\",
+                        "utcTime": "2026-08-17 14:21:43.408",
+                        "hashes": "MD5=B0C2FA35D14A9FAD919E99D9D75E1B9E,SHA256=022CB167A29A32DAE848BE91AEF721C74F1975AF151807DAFCC5ED832DB246B7,IMPHASH=0235FF9A007804882636BCCCFB4D1A2F",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\cmd.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "C:\\\\Windows\\\\system32\\\\regsvr32.exe  /s /u /i:\\\"C:\\\\AtomicRedTeam\\\\atomics\\\\T1218.010\\\\src\\\\RegSvr32.sct\\\" scrobj.dll",
+                        "integrityLevel": "High",
+                        "fileVersion": "10.0.19041.1 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "DESKTOP-IC9GOIC\\\\Brian"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-17 14:21:43.408\r\nProcessGuid: {b4526b9f-18f7-6a83-ca01-000000001100}\r\nProcessId: 6608\r\nImage: C:\\Windows\\System32\\regsvr32.exe\r\nFileVersion: 10.0.19041.1 (WinBuild.160101.0800)\r\nDescription: Microsoft(C) Register Server\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: REGSVR32.EXE\r\nCommandLine: C:\\Windows\\system32\\regsvr32.exe  /s /u /i:\"C:\\AtomicRedTeam\\atomics\\T1218.010\\src\\RegSvr32.sct\" scrobj.dll\r\nCurrentDirectory: C:\\Users\\Brian\\AppData\\Local\\Temp\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-1389-6a83-ed15-070000000000}\r\nLogonId: 0x715ED\r\nTerminalSessionId: 1\r\nIntegrityLevel: High\r\nHashes: MD5=B0C2FA35D14A9FAD919E99D9D75E1B9E,SHA256=022CB167A29A32DAE848BE91AEF721C74F1975AF151807DAFCC5ED832DB246B7,IMPHASH=0235FF9A007804882636BCCCFB4D1A2F\r\nParentProcessGuid: {b4526b9f-18f7-6a83-c801-000000001100}\r\nParentProcessId: 8184\r\nParentImage: C:\\Windows\\System32\\cmd.exe\r\nParentCommandLine: \"cmd.exe\" /c C:\\Windows\\system32\\regsvr32.exe /s /u /i:\"C:\\AtomicRedTeam\\atomics\\T1218.010\\src\\RegSvr32.sct\" scrobj.dll\r\nParentUser: DESKTOP-IC9GOIC\\Brian\"",
+                        "version": "5",
+                        "systemTime": "2026-08-17T14:21:43.4149421Z",
+                        "eventRecordID": "13748",
+                        "threadID": "5188",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2844",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 12,
+                    "description": "Regsvr32 ejecutando un scriptlet (.sct) vía scrobj.dll — patrón Squiblydoo de bypass de AppLocker/whitelisting, local o remoto",
+                    "groups": [
+                      "local",
+                      "sysmon"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "Regsvr32"
+                      ],
+                      "id": [
+                        "T1218.010"
+                      ],
+                      "tactic": [
+                        "Defense Evasion"
+                      ]
+                    },
+                    "id": "100040"
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-08-17T14:21:43.4149421Z\",\"eventRecordID\":\"13748\",\"processID\":\"2844\",\"threadID\":\"5188\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"DESKTOP-IC9GOIC\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: -\\r\\nUtcTime: 2026-08-17 14:21:43.408\\r\\nProcessGuid: {b4526b9f-18f7-6a83-ca01-000000001100}\\r\\nProcessId: 6608\\r\\nImage: C:\\\\Windows\\\\System32\\\\regsvr32.exe\\r\\nFileVersion: 10.0.19041.1 (WinBuild.160101.0800)\\r\\nDescription: Microsoft(C) Register Server\\r\\nProduct: Microsoft® Windows® Operating System\\r\\nCompany: Microsoft Corporation\\r\\nOriginalFileName: REGSVR32.EXE\\r\\nCommandLine: C:\\\\Windows\\\\system32\\\\regsvr32.exe  /s /u /i:\\\"C:\\\\AtomicRedTeam\\\\atomics\\\\T1218.010\\\\src\\\\RegSvr32.sct\\\" scrobj.dll\\r\\nCurrentDirectory: C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\\\r\\nUser: DESKTOP-IC9GOIC\\\\Brian\\r\\nLogonGuid: {b4526b9f-1389-6a83-ed15-070000000000}\\r\\nLogonId: 0x715ED\\r\\nTerminalSessionId: 1\\r\\nIntegrityLevel: High\\r\\nHashes: MD5=B0C2FA35D14A9FAD919E99D9D75E1B9E,SHA256=022CB167A29A32DAE848BE91AEF721C74F1975AF151807DAFCC5ED832DB246B7,IMPHASH=0235FF9A007804882636BCCCFB4D1A2F\\r\\nParentProcessGuid: {b4526b9f-18f7-6a83-c801-000000001100}\\r\\nParentProcessId: 8184\\r\\nParentImage: C:\\\\Windows\\\\System32\\\\cmd.exe\\r\\nParentCommandLine: \\\"cmd.exe\\\" /c C:\\\\Windows\\\\system32\\\\regsvr32.exe /s /u /i:\\\"C:\\\\AtomicRedTeam\\\\atomics\\\\T1218.010\\\\src\\\\RegSvr32.sct\\\" scrobj.dll\\r\\nParentUser: DESKTOP-IC9GOIC\\\\Brian\\\"\"},\"eventdata\":{\"utcTime\":\"2026-08-17 14:21:43.408\",\"processGuid\":\"{b4526b9f-18f7-6a83-ca01-000000001100}\",\"processId\":\"6608\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\regsvr32.exe\",\"fileVersion\":\"10.0.19041.1 (WinBuild.160101.0800)\",\"description\":\"Microsoft(C) Register Server\",\"product\":\"Microsoft® Windows® Operating System\",\"company\":\"Microsoft Corporation\",\"originalFileName\":\"REGSVR32.EXE\",\"commandLine\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\regsvr32.exe  /s /u /i:\\\\\\\"C:\\\\\\\\AtomicRedTeam\\\\\\\\atomics\\\\\\\\T1218.010\\\\\\\\src\\\\\\\\RegSvr32.sct\\\\\\\" scrobj.dll\",\"currentDirectory\":\"C:\\\\\\\\Users\\\\\\\\Brian\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\\",\"user\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\",\"logonGuid\":\"{b4526b9f-1389-6a83-ed15-070000000000}\",\"logonId\":\"0x715ed\",\"terminalSessionId\":\"1\",\"integrityLevel\":\"High\",\"hashes\":\"MD5=B0C2FA35D14A9FAD919E99D9D75E1B9E,SHA256=022CB167A29A32DAE848BE91AEF721C74F1975AF151807DAFCC5ED832DB246B7,IMPHASH=0235FF9A007804882636BCCCFB4D1A2F\",\"parentProcessGuid\":\"{b4526b9f-18f7-6a83-c801-000000001100}\",\"parentProcessId\":\"8184\",\"parentImage\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\cmd.exe\",\"parentCommandLine\":\"\\\\\\\"cmd.exe\\\\\\\" /c C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\regsvr32.exe /s /u /i:\\\\\\\"C:\\\\\\\\AtomicRedTeam\\\\\\\\atomics\\\\\\\\T1218.010\\\\\\\\src\\\\\\\\RegSvr32.sct\\\\\\\" scrobj.dll\",\"parentUser\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\"}}}",
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-17T14:21:46.431Z",
+                  "location": "EventChannel",
+                  "id": "1786976506.1478927",
+                  "timestamp": "2026-08-17T14:21:46.431+0000"
+                },
+                "sort": [
+                  1786976506431
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.17",
+                "_id": "VXxtDaABCrZkZBTEcHrv",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "RUNDLL32.EXE",
+                        "image": "C:\\\\Windows\\\\System32\\\\rundll32.exe",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-69d4-6a82-4302-000000001000}",
+                        "description": "Windows host process (Rundll32)",
+                        "logonGuid": "{b4526b9f-6295-6a82-be23-040000000000}",
+                        "parentCommandLine": "\\\"cmd.exe\\\" /c rundll32.exe pcwutl.dll,LaunchApplication %windir%\\\\System32\\\\notepad.exe",
+                        "processGuid": "{b4526b9f-69d4-6a82-4502-000000001000}",
+                        "logonId": "0x423be",
+                        "parentProcessId": "6872",
+                        "processId": "5776",
+                        "currentDirectory": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\",
+                        "utcTime": "2026-08-17 01:54:28.073",
+                        "hashes": "MD5=5A43032AEBD51583832EF3E96F5C81DA,SHA256=076592CA1957F8F357CC201F0015072C612F5770AD7DE85F87F254253C754DD7,IMPHASH=F207A867D6098266EE63A3CA677EB0FF",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\cmd.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "rundll32.exe  pcwutl.dll,LaunchApplication C:\\\\Windows\\\\System32\\\\notepad.exe",
+                        "integrityLevel": "High",
+                        "fileVersion": "10.0.19041.5794 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "DESKTOP-IC9GOIC\\\\Brian"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-17 01:54:28.073\r\nProcessGuid: {b4526b9f-69d4-6a82-4502-000000001000}\r\nProcessId: 5776\r\nImage: C:\\Windows\\System32\\rundll32.exe\r\nFileVersion: 10.0.19041.5794 (WinBuild.160101.0800)\r\nDescription: Windows host process (Rundll32)\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: RUNDLL32.EXE\r\nCommandLine: rundll32.exe  pcwutl.dll,LaunchApplication C:\\Windows\\System32\\notepad.exe\r\nCurrentDirectory: C:\\Users\\Brian\\AppData\\Local\\Temp\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-6295-6a82-be23-040000000000}\r\nLogonId: 0x423BE\r\nTerminalSessionId: 1\r\nIntegrityLevel: High\r\nHashes: MD5=5A43032AEBD51583832EF3E96F5C81DA,SHA256=076592CA1957F8F357CC201F0015072C612F5770AD7DE85F87F254253C754DD7,IMPHASH=F207A867D6098266EE63A3CA677EB0FF\r\nParentProcessGuid: {b4526b9f-69d4-6a82-4302-000000001000}\r\nParentProcessId: 6872\r\nParentImage: C:\\Windows\\System32\\cmd.exe\r\nParentCommandLine: \"cmd.exe\" /c rundll32.exe pcwutl.dll,LaunchApplication %windir%\\System32\\notepad.exe\r\nParentUser: DESKTOP-IC9GOIC\\Brian\"",
+                        "version": "5",
+                        "systemTime": "2026-08-17T01:54:28.0803258Z",
+                        "eventRecordID": "13204",
+                        "threadID": "3688",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2604",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 12,
+                    "description": "Rundll32 ejecutando una función conocida de proxy execution (LOLBin) — posible evasión de controles de ejecución de binarios",
+                    "groups": [
+                      "local",
+                      "sysmon"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "Rundll32"
+                      ],
+                      "id": [
+                        "T1218.011"
+                      ],
+                      "tactic": [
+                        "Defense Evasion"
+                      ]
+                    },
+                    "id": "100030"
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-08-17T01:54:28.0803258Z\",\"eventRecordID\":\"13204\",\"processID\":\"2604\",\"threadID\":\"3688\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"DESKTOP-IC9GOIC\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: -\\r\\nUtcTime: 2026-08-17 01:54:28.073\\r\\nProcessGuid: {b4526b9f-69d4-6a82-4502-000000001000}\\r\\nProcessId: 5776\\r\\nImage: C:\\\\Windows\\\\System32\\\\rundll32.exe\\r\\nFileVersion: 10.0.19041.5794 (WinBuild.160101.0800)\\r\\nDescription: Windows host process (Rundll32)\\r\\nProduct: Microsoft® Windows® Operating System\\r\\nCompany: Microsoft Corporation\\r\\nOriginalFileName: RUNDLL32.EXE\\r\\nCommandLine: rundll32.exe  pcwutl.dll,LaunchApplication C:\\\\Windows\\\\System32\\\\notepad.exe\\r\\nCurrentDirectory: C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\\\r\\nUser: DESKTOP-IC9GOIC\\\\Brian\\r\\nLogonGuid: {b4526b9f-6295-6a82-be23-040000000000}\\r\\nLogonId: 0x423BE\\r\\nTerminalSessionId: 1\\r\\nIntegrityLevel: High\\r\\nHashes: MD5=5A43032AEBD51583832EF3E96F5C81DA,SHA256=076592CA1957F8F357CC201F0015072C612F5770AD7DE85F87F254253C754DD7,IMPHASH=F207A867D6098266EE63A3CA677EB0FF\\r\\nParentProcessGuid: {b4526b9f-69d4-6a82-4302-000000001000}\\r\\nParentProcessId: 6872\\r\\nParentImage: C:\\\\Windows\\\\System32\\\\cmd.exe\\r\\nParentCommandLine: \\\"cmd.exe\\\" /c rundll32.exe pcwutl.dll,LaunchApplication %windir%\\\\System32\\\\notepad.exe\\r\\nParentUser: DESKTOP-IC9GOIC\\\\Brian\\\"\"},\"eventdata\":{\"utcTime\":\"2026-08-17 01:54:28.073\",\"processGuid\":\"{b4526b9f-69d4-6a82-4502-000000001000}\",\"processId\":\"5776\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\rundll32.exe\",\"fileVersion\":\"10.0.19041.5794 (WinBuild.160101.0800)\",\"description\":\"Windows host process (Rundll32)\",\"product\":\"Microsoft® Windows® Operating System\",\"company\":\"Microsoft Corporation\",\"originalFileName\":\"RUNDLL32.EXE\",\"commandLine\":\"rundll32.exe  pcwutl.dll,LaunchApplication C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\notepad.exe\",\"currentDirectory\":\"C:\\\\\\\\Users\\\\\\\\Brian\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\\",\"user\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\",\"logonGuid\":\"{b4526b9f-6295-6a82-be23-040000000000}\",\"logonId\":\"0x423be\",\"terminalSessionId\":\"1\",\"integrityLevel\":\"High\",\"hashes\":\"MD5=5A43032AEBD51583832EF3E96F5C81DA,SHA256=076592CA1957F8F357CC201F0015072C612F5770AD7DE85F87F254253C754DD7,IMPHASH=F207A867D6098266EE63A3CA677EB0FF\",\"parentProcessGuid\":\"{b4526b9f-69d4-6a82-4302-000000001000}\",\"parentProcessId\":\"6872\",\"parentImage\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\cmd.exe\",\"parentCommandLine\":\"\\\\\\\"cmd.exe\\\\\\\" /c rundll32.exe pcwutl.dll,LaunchApplication %windir%\\\\\\\\System32\\\\\\\\notepad.exe\",\"parentUser\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\"}}}",
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-17T01:54:29.153Z",
+                  "location": "EventChannel",
+                  "id": "1786931669.886444",
+                  "timestamp": "2026-08-17T01:54:29.153+0000"
+                },
+                "sort": [
+                  1786931669153
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.17",
+                "_id": "unw-DaABCrZkZBTEynnS",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "CertUtil.exe",
+                        "image": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\tcm.tmp",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-5ddb-6a82-b301-000000000f00}",
+                        "description": "CertUtil.exe",
+                        "logonGuid": "{b4526b9f-59a4-6a82-b81b-090000000000}",
+                        "parentCommandLine": "\\\"cmd.exe\\\" /c copy %windir%\\\\system32\\\\certutil.exe %temp%\\\\tcm.tmp &amp; %temp%\\\\tcm.tmp -encode C:\\\\Windows\\\\System32\\\\calc.exe %temp%\\\\T1140_calc2.txt &amp; %temp%\\\\tcm.tmp -decode %temp%\\\\T1140_calc2.txt %temp%\\\\T1140_calc2_decoded.exe",
+                        "processGuid": "{b4526b9f-5ddb-6a82-b601-000000000f00}",
+                        "logonId": "0x91bb8",
+                        "parentProcessId": "5660",
+                        "processId": "1100",
+                        "currentDirectory": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\",
+                        "utcTime": "2026-08-17 01:03:23.528",
+                        "hashes": "MD5=E6384AD54B07F9783135586C71F82D1C,SHA256=FD1670B43E2D9188B12B233780BF043C5A90A67A2C6E3FCDC564A5C246531BC2,IMPHASH=5AFC8346D5AFF4A4862E8A7C91042465",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\cmd.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\tcm.tmp  -decode C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\T1140_calc2.txt C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\T1140_calc2_decoded.exe",
+                        "integrityLevel": "High",
+                        "fileVersion": "10.0.19041.5794 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "DESKTOP-IC9GOIC\\\\Brian"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-17 01:03:23.528\r\nProcessGuid: {b4526b9f-5ddb-6a82-b601-000000000f00}\r\nProcessId: 1100\r\nImage: C:\\Users\\Brian\\AppData\\Local\\Temp\\tcm.tmp\r\nFileVersion: 10.0.19041.5794 (WinBuild.160101.0800)\r\nDescription: CertUtil.exe\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: CertUtil.exe\r\nCommandLine: C:\\Users\\Brian\\AppData\\Local\\Temp\\tcm.tmp  -decode C:\\Users\\Brian\\AppData\\Local\\Temp\\T1140_calc2.txt C:\\Users\\Brian\\AppData\\Local\\Temp\\T1140_calc2_decoded.exe\r\nCurrentDirectory: C:\\Users\\Brian\\AppData\\Local\\Temp\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-59a4-6a82-b81b-090000000000}\r\nLogonId: 0x91BB8\r\nTerminalSessionId: 1\r\nIntegrityLevel: High\r\nHashes: MD5=E6384AD54B07F9783135586C71F82D1C,SHA256=FD1670B43E2D9188B12B233780BF043C5A90A67A2C6E3FCDC564A5C246531BC2,IMPHASH=5AFC8346D5AFF4A4862E8A7C91042465\r\nParentProcessGuid: {b4526b9f-5ddb-6a82-b301-000000000f00}\r\nParentProcessId: 5660\r\nParentImage: C:\\Windows\\System32\\cmd.exe\r\nParentCommandLine: \"cmd.exe\" /c copy %windir%\\system32\\certutil.exe %temp%\\tcm.tmp & %temp%\\tcm.tmp -encode C:\\Windows\\System32\\calc.exe %temp%\\T1140_calc2.txt & %temp%\\tcm.tmp -decode %temp%\\T1140_calc2.txt %temp%\\T1140_calc2_decoded.exe\r\nParentUser: DESKTOP-IC9GOIC\\Brian\"",
+                        "version": "5",
+                        "systemTime": "2026-08-17T01:03:23.5344185Z",
+                        "eventRecordID": "12018",
+                        "threadID": "4248",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2856",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 13,
+                    "description": "Masqueraded CertUtil.exe used to decode binary file",
+                    "groups": [
+                      "sysmon",
+                      "sysmon_eid1_detections",
+                      "windows"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "Rename System Utilities",
+                        "Deobfuscate/Decode Files or Information"
+                      ],
+                      "id": [
+                        "T1036.003",
+                        "T1140"
+                      ],
+                      "tactic": [
+                        "Defense Evasion"
+                      ]
+                    },
+                    "id": "92017"
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-17T01:03:25.517Z",
+                  "location": "EventChannel",
+                  "id": "1786928605.392718",
+                  "timestamp": "2026-08-17T01:03:25.517+0000"
+                },
+                "sort": [
+                  1786928605517
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.17",
+                "_id": "uXw-DaABCrZkZBTEynnS",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "CertUtil.exe",
+                        "image": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\tcm.tmp",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-5ddb-6a82-b301-000000000f00}",
+                        "description": "CertUtil.exe",
+                        "logonGuid": "{b4526b9f-59a4-6a82-b81b-090000000000}",
+                        "parentCommandLine": "\\\"cmd.exe\\\" /c copy %windir%\\\\system32\\\\certutil.exe %temp%\\\\tcm.tmp &amp; %temp%\\\\tcm.tmp -encode C:\\\\Windows\\\\System32\\\\calc.exe %temp%\\\\T1140_calc2.txt &amp; %temp%\\\\tcm.tmp -decode %temp%\\\\T1140_calc2.txt %temp%\\\\T1140_calc2_decoded.exe",
+                        "processGuid": "{b4526b9f-5ddb-6a82-b501-000000000f00}",
+                        "logonId": "0x91bb8",
+                        "parentProcessId": "5660",
+                        "processId": "6036",
+                        "currentDirectory": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\",
+                        "utcTime": "2026-08-17 01:03:23.486",
+                        "hashes": "MD5=E6384AD54B07F9783135586C71F82D1C,SHA256=FD1670B43E2D9188B12B233780BF043C5A90A67A2C6E3FCDC564A5C246531BC2,IMPHASH=5AFC8346D5AFF4A4862E8A7C91042465",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\cmd.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\tcm.tmp  -encode C:\\\\Windows\\\\System32\\\\calc.exe C:\\\\Users\\\\Brian\\\\AppData\\\\Local\\\\Temp\\\\T1140_calc2.txt",
+                        "integrityLevel": "High",
+                        "fileVersion": "10.0.19041.5794 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "DESKTOP-IC9GOIC\\\\Brian"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-17 01:03:23.486\r\nProcessGuid: {b4526b9f-5ddb-6a82-b501-000000000f00}\r\nProcessId: 6036\r\nImage: C:\\Users\\Brian\\AppData\\Local\\Temp\\tcm.tmp\r\nFileVersion: 10.0.19041.5794 (WinBuild.160101.0800)\r\nDescription: CertUtil.exe\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: CertUtil.exe\r\nCommandLine: C:\\Users\\Brian\\AppData\\Local\\Temp\\tcm.tmp  -encode C:\\Windows\\System32\\calc.exe C:\\Users\\Brian\\AppData\\Local\\Temp\\T1140_calc2.txt \r\nCurrentDirectory: C:\\Users\\Brian\\AppData\\Local\\Temp\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-59a4-6a82-b81b-090000000000}\r\nLogonId: 0x91BB8\r\nTerminalSessionId: 1\r\nIntegrityLevel: High\r\nHashes: MD5=E6384AD54B07F9783135586C71F82D1C,SHA256=FD1670B43E2D9188B12B233780BF043C5A90A67A2C6E3FCDC564A5C246531BC2,IMPHASH=5AFC8346D5AFF4A4862E8A7C91042465\r\nParentProcessGuid: {b4526b9f-5ddb-6a82-b301-000000000f00}\r\nParentProcessId: 5660\r\nParentImage: C:\\Windows\\System32\\cmd.exe\r\nParentCommandLine: \"cmd.exe\" /c copy %windir%\\system32\\certutil.exe %temp%\\tcm.tmp & %temp%\\tcm.tmp -encode C:\\Windows\\System32\\calc.exe %temp%\\T1140_calc2.txt & %temp%\\tcm.tmp -decode %temp%\\T1140_calc2.txt %temp%\\T1140_calc2_decoded.exe\r\nParentUser: DESKTOP-IC9GOIC\\Brian\"",
+                        "version": "5",
+                        "systemTime": "2026-08-17T01:03:23.4987057Z",
+                        "eventRecordID": "12016",
+                        "threadID": "4248",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2856",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 13,
+                    "description": "Masqueraded CertUtil.exe with a different file name. Possible use to decode malware",
+                    "groups": [
+                      "sysmon",
+                      "sysmon_eid1_detections",
+                      "windows"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "Rename System Utilities",
+                        "Deobfuscate/Decode Files or Information"
+                      ],
+                      "id": [
+                        "T1036.003",
+                        "T1140"
+                      ],
+                      "tactic": [
+                        "Defense Evasion"
+                      ]
+                    },
+                    "id": "92016"
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-17T01:03:25.486Z",
+                  "location": "EventChannel",
+                  "id": "1786928605.385809",
+                  "timestamp": "2026-08-17T01:03:25.486+0000"
+                },
+                "sort": [
+                  1786928605486
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.16",
+                "_id": "z5K_C6AB5pY31xNMqhuk",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "PowerShell.EXE",
+                        "image": "C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-f711-6a81-7700-000000000e00}",
+                        "description": "Windows PowerShell",
+                        "logonGuid": "{b4526b9f-f7aa-6a81-d21b-230000000000}",
+                        "parentCommandLine": "C:\\\\Windows\\\\system32\\\\wbem\\\\wmiprvse.exe -secured -Embedding",
+                        "processGuid": "{b4526b9f-fbce-6a81-6002-000000000e00}",
+                        "logonId": "0x231bd2",
+                        "parentProcessId": "4912",
+                        "processId": "6128",
+                        "currentDirectory": "C:\\\\Windows\\\\system32\\\\",
+                        "utcTime": "2026-08-16 18:05:02.766",
+                        "hashes": "MD5=2E5A8590CF6848968FC23DE3FA1E25F1,SHA256=9785001B0DCF755EDDB8AF294A373C0B87B2498660F724E76C4D53F9C217C7A3,IMPHASH=3D08F4848535206D772DE145804FF4B6",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\wbem\\\\WmiPrvSE.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "powershell.exe -NoProfile -E VwByAGkAdABlAC0ASABvAHMAdAAgADYAYgAxAGYANgAxAGUANQAtADAAZABmADcALQA0ADkAMwAwAC0AYgBmADIANgAtAGUANAAzADYAMAA0ADEAZABhADEANwA3AA==",
+                        "integrityLevel": "High",
+                        "fileVersion": "10.0.19041.3996 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "NT AUTHORITY\\\\Servicio de red"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-16 18:05:02.766\r\nProcessGuid: {b4526b9f-fbce-6a81-6002-000000000e00}\r\nProcessId: 6128\r\nImage: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\r\nFileVersion: 10.0.19041.3996 (WinBuild.160101.0800)\r\nDescription: Windows PowerShell\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: PowerShell.EXE\r\nCommandLine: powershell.exe -NoProfile -E VwByAGkAdABlAC0ASABvAHMAdAAgADYAYgAxAGYANgAxAGUANQAtADAAZABmADcALQA0ADkAMwAwAC0AYgBmADIANgAtAGUANAAzADYAMAA0ADEAZABhADEANwA3AA==\r\nCurrentDirectory: C:\\Windows\\system32\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-f7aa-6a81-d21b-230000000000}\r\nLogonId: 0x231BD2\r\nTerminalSessionId: 1\r\nIntegrityLevel: High\r\nHashes: MD5=2E5A8590CF6848968FC23DE3FA1E25F1,SHA256=9785001B0DCF755EDDB8AF294A373C0B87B2498660F724E76C4D53F9C217C7A3,IMPHASH=3D08F4848535206D772DE145804FF4B6\r\nParentProcessGuid: {b4526b9f-f711-6a81-7700-000000000e00}\r\nParentProcessId: 4912\r\nParentImage: C:\\Windows\\System32\\wbem\\WmiPrvSE.exe\r\nParentCommandLine: C:\\Windows\\system32\\wbem\\wmiprvse.exe -secured -Embedding\r\nParentUser: NT AUTHORITY\\Servicio de red\"",
+                        "version": "5",
+                        "systemTime": "2026-08-16T18:05:02.8016692Z",
+                        "eventRecordID": "11566",
+                        "threadID": "5012",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2636",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 12,
+                    "description": "Ejecución de PowerShell con comando codificado en Base64 (cualquier proceso padre)",
+                    "groups": [
+                      "local",
+                      "sysmon"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "PowerShell"
+                      ],
+                      "id": [
+                        "T1059.001"
+                      ],
+                      "tactic": [
+                        "Execution"
+                      ]
+                    },
+                    "id": "100020"
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-08-16T18:05:02.8016692Z\",\"eventRecordID\":\"11566\",\"processID\":\"2636\",\"threadID\":\"5012\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"DESKTOP-IC9GOIC\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: -\\r\\nUtcTime: 2026-08-16 18:05:02.766\\r\\nProcessGuid: {b4526b9f-fbce-6a81-6002-000000000e00}\\r\\nProcessId: 6128\\r\\nImage: C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\r\\nFileVersion: 10.0.19041.3996 (WinBuild.160101.0800)\\r\\nDescription: Windows PowerShell\\r\\nProduct: Microsoft® Windows® Operating System\\r\\nCompany: Microsoft Corporation\\r\\nOriginalFileName: PowerShell.EXE\\r\\nCommandLine: powershell.exe -NoProfile -E VwByAGkAdABlAC0ASABvAHMAdAAgADYAYgAxAGYANgAxAGUANQAtADAAZABmADcALQA0ADkAMwAwAC0AYgBmADIANgAtAGUANAAzADYAMAA0ADEAZABhADEANwA3AA==\\r\\nCurrentDirectory: C:\\\\Windows\\\\system32\\\\\\r\\nUser: DESKTOP-IC9GOIC\\\\Brian\\r\\nLogonGuid: {b4526b9f-f7aa-6a81-d21b-230000000000}\\r\\nLogonId: 0x231BD2\\r\\nTerminalSessionId: 1\\r\\nIntegrityLevel: High\\r\\nHashes: MD5=2E5A8590CF6848968FC23DE3FA1E25F1,SHA256=9785001B0DCF755EDDB8AF294A373C0B87B2498660F724E76C4D53F9C217C7A3,IMPHASH=3D08F4848535206D772DE145804FF4B6\\r\\nParentProcessGuid: {b4526b9f-f711-6a81-7700-000000000e00}\\r\\nParentProcessId: 4912\\r\\nParentImage: C:\\\\Windows\\\\System32\\\\wbem\\\\WmiPrvSE.exe\\r\\nParentCommandLine: C:\\\\Windows\\\\system32\\\\wbem\\\\wmiprvse.exe -secured -Embedding\\r\\nParentUser: NT AUTHORITY\\\\Servicio de red\\\"\"},\"eventdata\":{\"utcTime\":\"2026-08-16 18:05:02.766\",\"processGuid\":\"{b4526b9f-fbce-6a81-6002-000000000e00}\",\"processId\":\"6128\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\WindowsPowerShell\\\\\\\\v1.0\\\\\\\\powershell.exe\",\"fileVersion\":\"10.0.19041.3996 (WinBuild.160101.0800)\",\"description\":\"Windows PowerShell\",\"product\":\"Microsoft® Windows® Operating System\",\"company\":\"Microsoft Corporation\",\"originalFileName\":\"PowerShell.EXE\",\"commandLine\":\"powershell.exe -NoProfile -E VwByAGkAdABlAC0ASABvAHMAdAAgADYAYgAxAGYANgAxAGUANQAtADAAZABmADcALQA0ADkAMwAwAC0AYgBmADIANgAtAGUANAAzADYAMAA0ADEAZABhADEANwA3AA==\",\"currentDirectory\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\\",\"user\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\",\"logonGuid\":\"{b4526b9f-f7aa-6a81-d21b-230000000000}\",\"logonId\":\"0x231bd2\",\"terminalSessionId\":\"1\",\"integrityLevel\":\"High\",\"hashes\":\"MD5=2E5A8590CF6848968FC23DE3FA1E25F1,SHA256=9785001B0DCF755EDDB8AF294A373C0B87B2498660F724E76C4D53F9C217C7A3,IMPHASH=3D08F4848535206D772DE145804FF4B6\",\"parentProcessGuid\":\"{b4526b9f-f711-6a81-7700-000000000e00}\",\"parentProcessId\":\"4912\",\"parentImage\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\wbem\\\\\\\\WmiPrvSE.exe\",\"parentCommandLine\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\wbem\\\\\\\\wmiprvse.exe -secured -Embedding\",\"parentUser\":\"NT AUTHORITY\\\\\\\\Servicio de red\"}}}",
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-16T18:05:03.949Z",
+                  "location": "EventChannel",
+                  "id": "1786903503.13550731",
+                  "timestamp": "2026-08-16T18:05:03.949+0000"
+                },
+                "sort": [
+                  1786903503949
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.16",
+                "_id": "cJK0C6AB5pY31xNM_xsv",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "PowerShell.EXE",
+                        "image": "C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-f711-6a81-7700-000000000e00}",
+                        "description": "Windows PowerShell",
+                        "logonGuid": "{b4526b9f-f7aa-6a81-d21b-230000000000}",
+                        "parentCommandLine": "C:\\\\Windows\\\\system32\\\\wbem\\\\wmiprvse.exe -secured -Embedding",
+                        "processGuid": "{b4526b9f-f913-6a81-7501-000000000e00}",
+                        "logonId": "0x231bd2",
+                        "parentProcessId": "4912",
+                        "processId": "9196",
+                        "currentDirectory": "C:\\\\Windows\\\\system32\\\\",
+                        "utcTime": "2026-08-16 17:53:23.160",
+                        "hashes": "MD5=2E5A8590CF6848968FC23DE3FA1E25F1,SHA256=9785001B0DCF755EDDB8AF294A373C0B87B2498660F724E76C4D53F9C217C7A3,IMPHASH=3D08F4848535206D772DE145804FF4B6",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\wbem\\\\WmiPrvSE.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "powershell.exe -NoProfile -E VwByAGkAdABlAC0ASABvAHMAdAAgAGUAYgAyADEAZABlADQANwAtAGYAMwA1ADkALQA0ADgAOQA5AC0AOQBjAGEAOQAtADQAMgBkADQAYwAwADcAZgA1AGYAYQAzAA==",
+                        "integrityLevel": "High",
+                        "fileVersion": "10.0.19041.3996 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "NT AUTHORITY\\\\Servicio de red"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-16 17:53:23.160\r\nProcessGuid: {b4526b9f-f913-6a81-7501-000000000e00}\r\nProcessId: 9196\r\nImage: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\r\nFileVersion: 10.0.19041.3996 (WinBuild.160101.0800)\r\nDescription: Windows PowerShell\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: PowerShell.EXE\r\nCommandLine: powershell.exe -NoProfile -E VwByAGkAdABlAC0ASABvAHMAdAAgAGUAYgAyADEAZABlADQANwAtAGYAMwA1ADkALQA0ADgAOQA5AC0AOQBjAGEAOQAtADQAMgBkADQAYwAwADcAZgA1AGYAYQAzAA==\r\nCurrentDirectory: C:\\Windows\\system32\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-f7aa-6a81-d21b-230000000000}\r\nLogonId: 0x231BD2\r\nTerminalSessionId: 1\r\nIntegrityLevel: High\r\nHashes: MD5=2E5A8590CF6848968FC23DE3FA1E25F1,SHA256=9785001B0DCF755EDDB8AF294A373C0B87B2498660F724E76C4D53F9C217C7A3,IMPHASH=3D08F4848535206D772DE145804FF4B6\r\nParentProcessGuid: {b4526b9f-f711-6a81-7700-000000000e00}\r\nParentProcessId: 4912\r\nParentImage: C:\\Windows\\System32\\wbem\\WmiPrvSE.exe\r\nParentCommandLine: C:\\Windows\\system32\\wbem\\wmiprvse.exe -secured -Embedding\r\nParentUser: NT AUTHORITY\\Servicio de red\"",
+                        "version": "5",
+                        "systemTime": "2026-08-16T17:53:23.1719869Z",
+                        "eventRecordID": "9007",
+                        "threadID": "5012",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2636",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 12,
+                    "description": "Ejecución de PowerShell con comando codificado en Base64 (cualquier proceso padre)",
+                    "groups": [
+                      "local",
+                      "sysmon"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "PowerShell"
+                      ],
+                      "id": [
+                        "T1059.001"
+                      ],
+                      "tactic": [
+                        "Execution"
+                      ]
+                    },
+                    "id": "100020"
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"1\",\"version\":\"5\",\"level\":\"4\",\"task\":\"1\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-08-16T17:53:23.1719869Z\",\"eventRecordID\":\"9007\",\"processID\":\"2636\",\"threadID\":\"5012\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"DESKTOP-IC9GOIC\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Process Create:\\r\\nRuleName: -\\r\\nUtcTime: 2026-08-16 17:53:23.160\\r\\nProcessGuid: {b4526b9f-f913-6a81-7501-000000000e00}\\r\\nProcessId: 9196\\r\\nImage: C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe\\r\\nFileVersion: 10.0.19041.3996 (WinBuild.160101.0800)\\r\\nDescription: Windows PowerShell\\r\\nProduct: Microsoft® Windows® Operating System\\r\\nCompany: Microsoft Corporation\\r\\nOriginalFileName: PowerShell.EXE\\r\\nCommandLine: powershell.exe -NoProfile -E VwByAGkAdABlAC0ASABvAHMAdAAgAGUAYgAyADEAZABlADQANwAtAGYAMwA1ADkALQA0ADgAOQA5AC0AOQBjAGEAOQAtADQAMgBkADQAYwAwADcAZgA1AGYAYQAzAA==\\r\\nCurrentDirectory: C:\\\\Windows\\\\system32\\\\\\r\\nUser: DESKTOP-IC9GOIC\\\\Brian\\r\\nLogonGuid: {b4526b9f-f7aa-6a81-d21b-230000000000}\\r\\nLogonId: 0x231BD2\\r\\nTerminalSessionId: 1\\r\\nIntegrityLevel: High\\r\\nHashes: MD5=2E5A8590CF6848968FC23DE3FA1E25F1,SHA256=9785001B0DCF755EDDB8AF294A373C0B87B2498660F724E76C4D53F9C217C7A3,IMPHASH=3D08F4848535206D772DE145804FF4B6\\r\\nParentProcessGuid: {b4526b9f-f711-6a81-7700-000000000e00}\\r\\nParentProcessId: 4912\\r\\nParentImage: C:\\\\Windows\\\\System32\\\\wbem\\\\WmiPrvSE.exe\\r\\nParentCommandLine: C:\\\\Windows\\\\system32\\\\wbem\\\\wmiprvse.exe -secured -Embedding\\r\\nParentUser: NT AUTHORITY\\\\Servicio de red\\\"\"},\"eventdata\":{\"utcTime\":\"2026-08-16 17:53:23.160\",\"processGuid\":\"{b4526b9f-f913-6a81-7501-000000000e00}\",\"processId\":\"9196\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\WindowsPowerShell\\\\\\\\v1.0\\\\\\\\powershell.exe\",\"fileVersion\":\"10.0.19041.3996 (WinBuild.160101.0800)\",\"description\":\"Windows PowerShell\",\"product\":\"Microsoft® Windows® Operating System\",\"company\":\"Microsoft Corporation\",\"originalFileName\":\"PowerShell.EXE\",\"commandLine\":\"powershell.exe -NoProfile -E VwByAGkAdABlAC0ASABvAHMAdAAgAGUAYgAyADEAZABlADQANwAtAGYAMwA1ADkALQA0ADgAOQA5AC0AOQBjAGEAOQAtADQAMgBkADQAYwAwADcAZgA1AGYAYQAzAA==\",\"currentDirectory\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\\",\"user\":\"DESKTOP-IC9GOIC\\\\\\\\Brian\",\"logonGuid\":\"{b4526b9f-f7aa-6a81-d21b-230000000000}\",\"logonId\":\"0x231bd2\",\"terminalSessionId\":\"1\",\"integrityLevel\":\"High\",\"hashes\":\"MD5=2E5A8590CF6848968FC23DE3FA1E25F1,SHA256=9785001B0DCF755EDDB8AF294A373C0B87B2498660F724E76C4D53F9C217C7A3,IMPHASH=3D08F4848535206D772DE145804FF4B6\",\"parentProcessGuid\":\"{b4526b9f-f711-6a81-7700-000000000e00}\",\"parentProcessId\":\"4912\",\"parentImage\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\wbem\\\\\\\\WmiPrvSE.exe\",\"parentCommandLine\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\wbem\\\\\\\\wmiprvse.exe -secured -Embedding\",\"parentUser\":\"NT AUTHORITY\\\\\\\\Servicio de red\"}}}",
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-16T17:53:24.396Z",
+                  "location": "EventChannel",
+                  "id": "1786902804.11990484",
+                  "timestamp": "2026-08-16T17:53:24.396+0000"
+                },
+                "sort": [
+                  1786902804396
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.16",
+                "_id": "v5KeC6AB5pY31xNMRxdl",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "PowerShell.EXE",
+                        "image": "C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-c5d0-6a81-5a00-000000000b00}",
+                        "description": "Windows PowerShell",
+                        "logonGuid": "{b4526b9f-c5da-6a81-ccf5-070000000000}",
+                        "parentCommandLine": "C:\\\\Windows\\\\system32\\\\wbem\\\\wmiprvse.exe -secured -Embedding",
+                        "processGuid": "{b4526b9f-f33d-6a81-3905-000000000b00}",
+                        "logonId": "0x7f5cc",
+                        "parentProcessId": "3852",
+                        "processId": "380",
+                        "currentDirectory": "c:\\\\windows\\\\system32\\\\driverstore\\\\filerepository\\\\ntprint.inf_amd64_906f4b456b58c7f3\\\\amd64\\\\",
+                        "utcTime": "2026-08-16 17:28:29.173",
+                        "hashes": "MD5=6726185B70B5ADF05E8A1A1DF82EBF30,SHA256=64DD55E1C2373DEED25C2776F553C632E58C45E56A0E4639DFD54EE97EAB9C19,IMPHASH=E3007C8E0098D06ABF617EEE6F0C5ABD",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\wbem\\\\WmiPrvSE.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "powershell.exe -NoProfile -E VwByAGkAdABlAC0ASABvAHMAdAAgAGIANQBlADcAMwA4AGUAZgAtAGYAYwA2AGQALQA0AGUANABhAC0AOQA1AGUAMwAtADYANAAyADMAOQA1ADAAMQA5AGQAMgAzAA==",
+                        "integrityLevel": "High",
+                        "fileVersion": "10.0.19041.3636 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "NT AUTHORITY\\\\Servicio de red"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-16 17:28:29.173\r\nProcessGuid: {b4526b9f-f33d-6a81-3905-000000000b00}\r\nProcessId: 380\r\nImage: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\r\nFileVersion: 10.0.19041.3636 (WinBuild.160101.0800)\r\nDescription: Windows PowerShell\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: PowerShell.EXE\r\nCommandLine: powershell.exe -NoProfile -E VwByAGkAdABlAC0ASABvAHMAdAAgAGIANQBlADcAMwA4AGUAZgAtAGYAYwA2AGQALQA0AGUANABhAC0AOQA1AGUAMwAtADYANAAyADMAOQA1ADAAMQA5AGQAMgAzAA==\r\nCurrentDirectory: c:\\windows\\system32\\driverstore\\filerepository\\ntprint.inf_amd64_906f4b456b58c7f3\\amd64\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-c5da-6a81-ccf5-070000000000}\r\nLogonId: 0x7F5CC\r\nTerminalSessionId: 1\r\nIntegrityLevel: High\r\nHashes: MD5=6726185B70B5ADF05E8A1A1DF82EBF30,SHA256=64DD55E1C2373DEED25C2776F553C632E58C45E56A0E4639DFD54EE97EAB9C19,IMPHASH=E3007C8E0098D06ABF617EEE6F0C5ABD\r\nParentProcessGuid: {b4526b9f-c5d0-6a81-5a00-000000000b00}\r\nParentProcessId: 3852\r\nParentImage: C:\\Windows\\System32\\wbem\\WmiPrvSE.exe\r\nParentCommandLine: C:\\Windows\\system32\\wbem\\wmiprvse.exe -secured -Embedding\r\nParentUser: NT AUTHORITY\\Servicio de red\"",
+                        "version": "5",
+                        "systemTime": "2026-08-16T17:28:29.1864684Z",
+                        "eventRecordID": "7986",
+                        "threadID": "4620",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2896",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 2,
+                    "mail": true,
+                    "level": 12,
+                    "description": "A powershell process created by WMI executed a base64 encoded command",
+                    "groups": [
+                      "sysmon",
+                      "sysmon_eid1_detections",
+                      "windows"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "Windows Management Instrumentation",
+                        "PowerShell"
+                      ],
+                      "id": [
+                        "T1047",
+                        "T1059.001"
+                      ],
+                      "tactic": [
+                        "Execution"
+                      ]
+                    },
+                    "id": "92071"
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-16T17:28:29.919Z",
+                  "location": "EventChannel",
+                  "id": "1786901309.8052371",
+                  "timestamp": "2026-08-16T17:28:29.919+0000"
+                },
+                "sort": [
+                  1786901309919
+                ]
+              },
+              {
+                "_index": "wazuh-alerts-4.x-2026.08.16",
+                "_id": "zJKIC6AB5pY31xNMjBaQ",
+                "_score": null,
+                "_source": {
+                  "agent": {
+                    "ip": "192.168.64.133",
+                    "name": "DESKTOP-IC9GOIC",
+                    "id": "001"
+                  },
+                  "manager": {
+                    "name": "wazuh.manager"
+                  },
+                  "data": {
+                    "win": {
+                      "eventdata": {
+                        "originalFileName": "PowerShell.EXE",
+                        "image": "C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe",
+                        "product": "Microsoft® Windows® Operating System",
+                        "parentProcessGuid": "{b4526b9f-c5d0-6a81-5a00-000000000b00}",
+                        "description": "Windows PowerShell",
+                        "logonGuid": "{b4526b9f-c5da-6a81-ccf5-070000000000}",
+                        "parentCommandLine": "C:\\\\Windows\\\\system32\\\\wbem\\\\wmiprvse.exe -secured -Embedding",
+                        "processGuid": "{b4526b9f-edae-6a81-9103-000000000b00}",
+                        "logonId": "0x7f5cc",
+                        "parentProcessId": "3852",
+                        "processId": "2148",
+                        "currentDirectory": "c:\\\\windows\\\\system32\\\\driverstore\\\\filerepository\\\\ntprint.inf_amd64_906f4b456b58c7f3\\\\amd64\\\\",
+                        "utcTime": "2026-08-16 17:04:46.876",
+                        "hashes": "MD5=6726185B70B5ADF05E8A1A1DF82EBF30,SHA256=64DD55E1C2373DEED25C2776F553C632E58C45E56A0E4639DFD54EE97EAB9C19,IMPHASH=E3007C8E0098D06ABF617EEE6F0C5ABD",
+                        "parentImage": "C:\\\\Windows\\\\System32\\\\wbem\\\\WmiPrvSE.exe",
+                        "company": "Microsoft Corporation",
+                        "commandLine": "powershell.exe -NoProfile -E VwByAGkAdABlAC0ASABvAHMAdAAgADEAYgAwADMAOQAzAGEAYgAtAGEAYQBiADEALQA0ADUAMgA5AC0AYgBmAGIANwAtADEAYQA2ADYANQBjADkAMwBhADIAOAA0AA==",
+                        "integrityLevel": "High",
+                        "fileVersion": "10.0.19041.3636 (WinBuild.160101.0800)",
+                        "user": "DESKTOP-IC9GOIC\\\\Brian",
+                        "terminalSessionId": "1",
+                        "parentUser": "NT AUTHORITY\\\\Servicio de red"
+                      },
+                      "system": {
+                        "eventID": "1",
+                        "keywords": "0x8000000000000000",
+                        "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+                        "level": "4",
+                        "channel": "Microsoft-Windows-Sysmon/Operational",
+                        "opcode": "0",
+                        "message": "\"Process Create:\r\nRuleName: -\r\nUtcTime: 2026-08-16 17:04:46.876\r\nProcessGuid: {b4526b9f-edae-6a81-9103-000000000b00}\r\nProcessId: 2148\r\nImage: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\r\nFileVersion: 10.0.19041.3636 (WinBuild.160101.0800)\r\nDescription: Windows PowerShell\r\nProduct: Microsoft® Windows® Operating System\r\nCompany: Microsoft Corporation\r\nOriginalFileName: PowerShell.EXE\r\nCommandLine: powershell.exe -NoProfile -E VwByAGkAdABlAC0ASABvAHMAdAAgADEAYgAwADMAOQAzAGEAYgAtAGEAYQBiADEALQA0ADUAMgA5AC0AYgBmAGIANwAtADEAYQA2ADYANQBjADkAMwBhADIAOAA0AA==\r\nCurrentDirectory: c:\\windows\\system32\\driverstore\\filerepository\\ntprint.inf_amd64_906f4b456b58c7f3\\amd64\\\r\nUser: DESKTOP-IC9GOIC\\Brian\r\nLogonGuid: {b4526b9f-c5da-6a81-ccf5-070000000000}\r\nLogonId: 0x7F5CC\r\nTerminalSessionId: 1\r\nIntegrityLevel: High\r\nHashes: MD5=6726185B70B5ADF05E8A1A1DF82EBF30,SHA256=64DD55E1C2373DEED25C2776F553C632E58C45E56A0E4639DFD54EE97EAB9C19,IMPHASH=E3007C8E0098D06ABF617EEE6F0C5ABD\r\nParentProcessGuid: {b4526b9f-c5d0-6a81-5a00-000000000b00}\r\nParentProcessId: 3852\r\nParentImage: C:\\Windows\\System32\\wbem\\WmiPrvSE.exe\r\nParentCommandLine: C:\\Windows\\system32\\wbem\\wmiprvse.exe -secured -Embedding\r\nParentUser: NT AUTHORITY\\Servicio de red\"",
+                        "version": "5",
+                        "systemTime": "2026-08-16T17:04:46.8899552Z",
+                        "eventRecordID": "7381",
+                        "threadID": "4620",
+                        "computer": "DESKTOP-IC9GOIC",
+                        "task": "1",
+                        "processID": "2896",
+                        "severityValue": "INFORMATION",
+                        "providerName": "Microsoft-Windows-Sysmon"
+                      }
+                    }
+                  },
+                  "rule": {
+                    "firedtimes": 1,
+                    "mail": true,
+                    "level": 12,
+                    "description": "A powershell process created by WMI executed a base64 encoded command",
+                    "groups": [
+                      "sysmon",
+                      "sysmon_eid1_detections",
+                      "windows"
+                    ],
+                    "mitre": {
+                      "technique": [
+                        "Windows Management Instrumentation",
+                        "PowerShell"
+                      ],
+                      "id": [
+                        "T1047",
+                        "T1059.001"
+                      ],
+                      "tactic": [
+                        "Execution"
+                      ]
+                    },
+                    "id": "92071"
+                  },
+                  "decoder": {
+                    "name": "windows_eventchannel"
+                  },
+                  "input": {
+                    "type": "log"
+                  },
+                  "@timestamp": "2026-08-16T17:04:47.700Z",
+                  "location": "EventChannel",
+                  "id": "1786899887.6136181",
+                  "timestamp": "2026-08-16T17:04:47.700+0000"
+                },
+                "sort": [
+                  1786899887700
+                ]
+              }
+            ]
+          }
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "a4f2f3ba-c8c6-4bb0-a055-0a9fc5845650",
+  "meta": {
+    "instanceId": "e9f70af4b3fadf73ab1d5516bdf794ae8e6c17d0721bf0c104aa77a93a0878cd"
+  },
+  "nodeGroups": [],
+  "id": "hwcBtg4G7dWdREDh",
+  "tags": []
+}
