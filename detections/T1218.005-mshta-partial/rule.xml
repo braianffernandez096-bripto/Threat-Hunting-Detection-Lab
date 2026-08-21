@@ -1,0 +1,6 @@
+<!-- T1218.005 — Mshta -->
+<!-- NO se cargó una regla custom para esta técnica: la telemetría de Sysmon llegó -->
+<!-- parcial/incompleta por un bug puntual del agente de Wazuh en esa sesión, -->
+<!-- documentado como limitación conocida. Windows Defender sí bloqueó la ejecución -->
+<!-- (ver captura docs/screenshots/07-defender-blocks-mshta-vbscript.png). -->
+<!-- Ver README, sección "Movimiento Lateral" / hallazgos, para el detalle completo. -->
