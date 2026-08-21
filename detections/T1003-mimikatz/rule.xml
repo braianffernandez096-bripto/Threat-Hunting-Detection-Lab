@@ -1,0 +1,13 @@
+<!-- T1003 — Descarga y ejecución de Mimikatz en memoria vía PowerShell (IEX + DownloadString) -->
+<!-- NOTA: misma limitación que T1003.001 — Windows Defender bloquea con firma -->
+<!-- Trojan:PowerShell/Mimikatz.A antes de que el proceso se complete. -->
+<rule id="100110" level="14">
+  <if_group>sysmon_eid1_detections</if_group>
+  <field name="win.eventdata.image" type="pcre2">(?i)powershell\.exe$</field>
+  <field name="win.eventdata.commandLine" type="pcre2">(?i)downloadstring.*mimikatz</field>
+  <description>Posible descarga y ejecución de Mimikatz vía PowerShell (IEX + DownloadString) — extracción de credenciales de LSASS. No validada con telemetría real por bloqueo preventivo de Windows Defender.</description>
+  <mitre>
+    <id>T1003</id>
+  </mitre>
+  <group>mimikatz,credential-access,local</group>
+</rule>
