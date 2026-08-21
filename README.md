@@ -290,8 +290,6 @@ El script `wazuh_vt_enrich.py` funcionaba, pero requería ejecución manual, no 
 | 11 | **HTTP Request** (Slack) | Envía la notificación al canal vía Incoming Webhook |
 | 12 | **Wait (16s)** | Respeta el rate limit del tier gratuito de VT (4 req/min), y vuelve a alimentar el loop |
 
-![Canvas completo del workflow en n8n](docs/screenshots/11-n8n-workflow-canvas.png)
-
 ### Decisiones técnicas y desafíos resueltos
 
 **Puerto del Indexer vs. Dashboard.** El primer intento de conexión devolvió un `404 Not Found` en vez de un error de conexión — señal de que el servidor respondía, pero no en la ruta esperada. Investigando los contenedores Docker (`docker ps`), se confirmó que el puerto expuesto inicialmente (10443) correspondía al **Wazuh Dashboard** (mapeado desde el puerto 5601 interno), no al **Indexer** — que corre en el 9200. Un buen recordatorio de que un código de error específico (404 vs. timeout) acota mucho más rápido el diagnóstico que "no conecta".
@@ -307,8 +305,7 @@ El script `wazuh_vt_enrich.py` funcionaba, pero requería ejecución manual, no 
 - **Deduplicación validada**: la primera corrida procesó las 17 alertas de la sesión (≈4m 43s, respetando el rate limit); las corridas siguientes, sin alertas nuevas, terminan en ~100ms sin consultar VT ni consumir cuota.
 - **Notificación validada**: las 17 alertas enriquecidas llegaron correctamente al canal de Slack configurado, con el resumen de VirusTotal, regla, técnica MITRE, imagen y hash de cada una.
 
-![Ejecución rápida por deduplicación vs. ejecución completa](docs/screenshots/12-n8n-executions-comparison.png)
-![Notificación recibida en Slack](docs/screenshots/13-slack-notification.png)
+![Ejecución rápida por deduplicación vs. ejecución completa](docs/screenshots/12-n8n-executions-dedup-timing.png)
 
 ### Demo en vivo: el pipeline completo reaccionando a una alerta nueva
 
