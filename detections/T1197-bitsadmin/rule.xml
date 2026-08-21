@@ -1,0 +1,11 @@
+<!-- T1197 — BITSAdmin usado para transferencia de archivos (descarga/exfiltración) -->
+<rule id="100090" level="12">
+  <if_sid>92005</if_sid>
+  <field name="win.eventdata.image" type="pcre2">(?i)bitsadmin\.exe$</field>
+  <field name="win.eventdata.commandLine" type="pcre2">(?i)/transfer.*(/download|/upload)</field>
+  <description>Uso de BITSAdmin para transferencia de archivos — posible descarga de payload o exfiltración vía BITS Jobs</description>
+  <mitre>
+    <id>T1197</id>
+  </mitre>
+  <group>bitsadmin,lolbin,local</group>
+</rule>
