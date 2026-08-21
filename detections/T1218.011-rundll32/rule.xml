@@ -1,0 +1,10 @@
+<!-- T1218.011 — Rundll32 proxy execution vía DLLs LOLBin conocidas -->
+<rule id="100030" level="12">
+  <if_group>sysmon_eid1_detections</if_group>
+  <field name="win.eventdata.image" type="pcre2">(?i)rundll32\.exe$</field>
+  <field name="win.eventdata.commandLine" type="pcre2">(?i)(pcwutl\.dll,LaunchApplication|advpack\.dll,LaunchINFSection|ieadvpack\.dll,LaunchINFSection|syssetup\.dll,SetupInfObjectInstallAction|setupapi\.dll,InstallHinfSection|url\.dll,OpenURL|url\.dll,FileProtocolHandler)</field>
+  <description>Rundll32 ejecutando una función conocida de proxy execution (LOLBin) — posible evasión de controles de ejecución de binarios</description>
+  <mitre>
+    <id>T1218.011</id>
+  </mitre>
+</rule>
