@@ -109,7 +109,7 @@ flowchart TB
 ## 📁 Estructura del repositorio
 
 ```
-enterprise-threat-hunting-lab/
+Threat-Hunting-Detection-Engineering-Lab/
 ├── README.md
 ├── docs/
 │   └── screenshots/
@@ -133,10 +133,10 @@ enterprise-threat-hunting-lab/
 │   └── snort-nids/
 │       └── local.rules                 ← reglas custom de Snort
 ├── n8n-workflows/
-│   ├── soc-l2-workflow.json            ← export del workflow de orquestación
-│   └── db/
-│       └── soc_alerts.db               ← historial de alertas enriquecidas (SQLite)
-└── lessons-learned.md
+│   └── soc-l2-workflow.json            ← export del workflow de orquestación
+└── db/
+    ├── schema.sql                      ← estructura de la tabla SQLite (sin el binario)
+    └── sample_export.csv               ← muestra real de alertas procesadas
 ```
 
 ---
@@ -208,7 +208,7 @@ Tres técnicas de *Credential Access* y *Persistence/Defense Evasion* pensadas c
 
 BITS (*Background Intelligent Transfer Service*) es un servicio legítimo de Windows para transferencias en segundo plano (lo usa Windows Update). Se abusa porque corre con privilegios del sistema, sobrevive reinicios, y recibe menos escrutinio que PowerShell o cmd — un LOLBin clásico para descargar payloads.
 
-**Sin cobertura nativa real.** Las únicas reglas que dispararon fueron genéricas de nivel 4 (`92005` "Command shell started script with /c modifier", `92052` "Windows command prompt started by an abnormal process") — ninguna hace referencia a BITS, ambas disparan con cualquier `cmd /c`
+**Sin cobertura nativa real.** Las únicas reglas que dispararon fueron genéricas de nivel 4 (`92005` "Command shell started script with /c modifier", `92052` "Windows command prompt started by an abnormal process") — ninguna hace referencia a BITS, ambas disparan con cualquier `cmd /c`. Un analista sin regla dedicada no tendría forma de distinguir esto de tráfico inocuo.
 
 Regla custom `100090` (nivel 12) detecta `bitsadmin.exe` con `/transfer` + `/download`/`/upload` en el command line, validada con éxito.
 
@@ -514,4 +514,4 @@ Esto ilustra bien un punto central del proyecto: **la reputación por hash no al
 
 ## 👤 Braian Fernandez
 
-Portafolio de ciberseguridad.
+Portafolio de ciberseguridad
