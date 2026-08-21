@@ -18,19 +18,19 @@ El objetivo no es solo detectar — es **documentar el razonamiento de análisis
 
 ```mermaid
 flowchart TB
-    subgraph Red interna aislada [Red interna aislada · 192.168.64.0-24]
+    subgraph RedInterna ["Red interna aislada · 192.168.64.0/24"]
         WIN["🖥️ Windows 10\nEndpoint\nSysmon + Winlogbeat + Agente Wazuh"]
         KALI["💀 Kali Linux\nAtacante — Impacket (PsExec, wmiexec)"]
     end
 
-    subgraph Ubuntu [Ubuntu · Núcleo de análisis]
+    subgraph Ubuntu ["Ubuntu · Núcleo de análisis"]
         WAZUH["🔍 Wazuh Manager\n+ Indexer + Dashboard"]
         SNORT["🛰️ Snort NIDS\n+ Agente Wazuh local"]
         VT["🌐 vt_lookup.py\n(consulta manual)"]
         N8N["⚙️ n8n\nOrquestador: detección → enriquecimiento → notificación"]
     end
 
-    subgraph Externo [Servicios externos]
+    subgraph Externo ["Servicios externos"]
         VTAPI["VirusTotal API"]
         SLACK["💬 Slack\n(Incoming Webhook)"]
     end
@@ -42,6 +42,11 @@ flowchart TB
     WAZUH -->|alertas nivel 12+ vía Indexer| N8N
     N8N -->|consulta hash| VTAPI
     N8N -->|notificación enriquecida| SLACK
+
+    classDef subgraphStyle fill:#161b22,stroke:#30363d,color:#c9d1d9
+    classDef nodeStyle fill:#21262d,stroke:#58a6ff,color:#e6edf3,rx:6,ry:6
+    class RedInterna,Ubuntu,Externo subgraphStyle
+    class WIN,KALI,WAZUH,SNORT,VT,N8N,VTAPI,SLACK nodeStyle
 ```
 
 ![Vista general del dashboard de Wazuh](docs/screenshots/01-wazuh-dashboard-overview.png)
@@ -512,4 +517,4 @@ Esto ilustra bien un punto central del proyecto: **la reputación por hash no al
 
 ## 👤 Braian Fernandez
 
-Portafolio de ciberseguridad /
+Portafolio de ciberseguridad.
