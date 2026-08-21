@@ -1,0 +1,136 @@
+<!--
+  Reglas custom para Wazuh — AI-Augmented Enterprise Threat Hunting Lab
+  Ubicación en el Manager: /var/ossec/etc/rules/local_rules.xml
+-->
+<group name="local,sysmon,">
+
+  <!-- Excepción: archivo temporal propio de PowerShell (falso positivo) -->
+  <rule id="100010" level="0">
+    <if_sid>92213</if_sid>
+    <field name="win.eventdata.targetFilename" type="pcre2">(?i)PSScriptPolicyTest</field>
+    <description>Falso positivo: archivo temporal propio de PowerShell (PSScriptPolicyTest), no es malware</description>
+  </rule>
+
+  <!-- Excepción: artefactos de compilación en memoria de C# (falso positivo) -->
+  <rule id="100011" level="0">
+    <if_sid>92213</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)csc\.exe$</field>
+    <description>Falso positivo: artefactos de compilación en memoria de C# (csc.exe) generados por PowerShell/Add-Type, comportamiento normal</description>
+  </rule>
+
+  <!-- T1059.001 — PowerShell EncodedCommand, sin depender del proceso padre -->
+  <rule id="100020" level="12">
+    <if_group>sysmon_eid1_detections</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)powershell\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)-(e|enc|encodedcommand)\s+[A-Za-z0-9+/=]{20,}</field>
+    <description>Ejecución de PowerShell con comando codificado en Base64 (cualquier proceso padre)</description>
+    <mitre>
+      <id>T1059.001</id>
+    </mitre>
+  </rule>
+
+  <!-- T1218.011 — Rundll32 proxy execution vía DLLs LOLBin conocidas -->
+  <rule id="100030" level="12">
+    <if_group>sysmon_eid1_detections</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)rundll32\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(pcwutl\.dll,LaunchApplication|advpack\.dll,LaunchINFSection|ieadvpack\.dll,LaunchINFSection|syssetup\.dll,SetupInfObjectInstallAction|setupapi\.dll,InstallHinfSection|url\.dll,OpenURL|url\.dll,FileProtocolHandler)</field>
+    <description>Rundll32 ejecutando una función conocida de proxy execution (LOLBin) — posible evasión de controles de ejecución de binarios</description>
+    <mitre>
+      <id>T1218.011</id>
+    </mitre>
+  </rule>
+
+  <!-- T1218.010 — Regsvr32 Squiblydoo (local o remoto) -->
+  <rule id="100040" level="12">
+    <if_group>sysmon_eid1_detections</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)regsvr32\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)/i:.*scrobj\.dll</field>
+    <description>Regsvr32 ejecutando un scriptlet (.sct) vía scrobj.dll — patrón Squiblydoo de bypass de AppLocker/whitelisting, local o remoto</description>
+    <mitre>
+      <id>T1218.010</id>
+    </mitre>
+  </rule>
+
+  <!-- T1053.005 — Scheduled Task ejecutando un intérprete/LOLBin -->
+  <rule id="100050" level="12">
+    <if_group>sysmon_eid1_detections</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)schtasks\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)/create.*(cmd\.exe|powershell\.exe|wscript|cscript|mshta|rundll32|regsvr32)</field>
+    <description>Creación de tarea programada que ejecuta un intérprete de comandos o LOLBin — patrón común de persistencia</description>
+    <mitre>
+      <id>T1053.005</id>
+    </mitre>
+  </rule>
+
+  <!-- T1574.001 — DLL Side-Loading / masquerading vía GUP.exe fuera de ubicación -->
+  <rule id="100060" level="12">
+    <if_group>sysmon_eid1_detections</if_group>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)^gup\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2">(?i)^(?!.*notepad).*gup\.exe$</field>
+    <description>GUP.exe (actualizador legítimo de Notepad++) ejecutándose fuera de su carpeta de instalación esperada — indicio de DLL Side-Loading/masquerading</description>
+    <mitre>
+      <id>T1574.001</id>
+    </mitre>
+  </rule>
+
+  <!-- T1047 — Patrón de Impacket wmiexec.py (ejecución remota vía WMI) -->
+  <rule id="100070" level="12">
+    <if_group>sysmon_eid1_detections</if_group>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)cmd\.exe$</field>
+    <field name="win.eventdata.parentCommandLine" type="pcre2">(?i)ADMIN\$.{0,5}__\d{8}</field>
+    <description>Patrón de Impacket wmiexec.py: cmd.exe redirigiendo salida a ADMIN$\__(timestamp) — ejecución remota vía WMI</description>
+    <mitre>
+      <id>T1047</id>
+    </mitre>
+  </rule>
+
+  <!-- Excepción: falso positivo del ruleset nativo — explorer.exe lanzado por DCOM (legítimo) -->
+  <rule id="100080" level="0">
+    <if_sid>61640</if_sid>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)svchost\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)/factory,\{.*\}\s*-Embedding</field>
+    <description>Falso positivo: lanzamiento legítimo de explorer.exe como servidor COM (DCOM) vía svchost -k DcomLaunch, patrón estándar /factory,{CLSID} -Embedding, no es inyección de procesos</description>
+  </rule>
+
+  <!-- T1197 — BITSAdmin usado para transferencia de archivos (descarga/exfiltración) -->
+  <rule id="100090" level="12">
+    <if_sid>92005</if_sid>
+    <field name="win.eventdata.image" type="pcre2">(?i)bitsadmin\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)/transfer.*(/download|/upload)</field>
+    <description>Uso de BITSAdmin para transferencia de archivos — posible descarga de payload o exfiltración vía BITS Jobs</description>
+    <mitre>
+      <id>T1197</id>
+    </mitre>
+    <group>bitsadmin,lolbin,local</group>
+  </rule>
+
+  <!-- T1003.001 — Volcado de memoria de LSASS vía rundll32 + comsvcs.dll -->
+  <!-- NOTA: patrón diseñado a partir del comportamiento documentado de la técnica; no pudo -->
+  <!-- validarse con un evento real de Sysmon, porque Windows Defender bloquea el proceso -->
+  <!-- (firma Trojan:Win32/RundllLolBin.AF) antes de que llegue a crearse. -->
+  <rule id="100100" level="12">
+    <if_group>sysmon_eid1_detections</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)rundll32\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)comsvcs\.dll.*MiniDump</field>
+    <description>Posible volcado de memoria de proceso vía rundll32 + comsvcs.dll (técnica común contra LSASS) — no validada con telemetría real por bloqueo preventivo de Windows Defender</description>
+    <mitre>
+      <id>T1003.001</id>
+    </mitre>
+    <group>lsass,credential-access,local</group>
+  </rule>
+
+  <!-- T1003 — Descarga y ejecución de Mimikatz en memoria vía PowerShell (IEX + DownloadString) -->
+  <!-- NOTA: misma limitación que 100100 — Windows Defender bloquea con firma -->
+  <!-- Trojan:PowerShell/Mimikatz.A antes de que el proceso se complete. -->
+  <rule id="100110" level="14">
+    <if_group>sysmon_eid1_detections</if_group>
+    <field name="win.eventdata.image" type="pcre2">(?i)powershell\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)downloadstring.*mimikatz</field>
+    <description>Posible descarga y ejecución de Mimikatz vía PowerShell (IEX + DownloadString) — extracción de credenciales de LSASS. No validada con telemetría real por bloqueo preventivo de Windows Defender.</description>
+    <mitre>
+      <id>T1003</id>
+    </mitre>
+    <group>mimikatz,credential-access,local</group>
+  </rule>
+
+</group>
