@@ -1,0 +1,14 @@
+<!-- T1003.001 — Volcado de memoria de LSASS vía rundll32 + comsvcs.dll -->
+<!-- NOTA: patrón diseñado a partir del comportamiento documentado de la técnica; no pudo -->
+<!-- validarse con un evento real de Sysmon, porque Windows Defender bloquea el proceso -->
+<!-- (firma Trojan:Win32/RundllLolBin.AF) antes de que llegue a crearse. -->
+<rule id="100100" level="12">
+  <if_group>sysmon_eid1_detections</if_group>
+  <field name="win.eventdata.image" type="pcre2">(?i)rundll32\.exe$</field>
+  <field name="win.eventdata.commandLine" type="pcre2">(?i)comsvcs\.dll.*MiniDump</field>
+  <description>Posible volcado de memoria de proceso vía rundll32 + comsvcs.dll (técnica común contra LSASS) — no validada con telemetría real por bloqueo preventivo de Windows Defender</description>
+  <mitre>
+    <id>T1003.001</id>
+  </mitre>
+  <group>lsass,credential-access,local</group>
+</rule>
