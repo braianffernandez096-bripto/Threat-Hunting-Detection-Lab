@@ -1,0 +1,5 @@
+<!-- T1140 — CertUtil renombrado/enmascarado, decodificando un payload -->
+<!-- Cubierto por reglas NATIVAS de Wazuh (ruleset sysmon), sin necesidad de regla custom: -->
+<!--   92016 — CertUtil.exe used to decode a file -->
+<!--   92017 — CertUtil.exe execution renamed -->
+<!-- Ver README, sección "T1140 — CertUtil masqueraded" para el detalle y las capturas. -->
