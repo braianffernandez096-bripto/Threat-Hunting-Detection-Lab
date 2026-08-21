@@ -1,0 +1,6 @@
+<!-- T1569.002 — PsExec (SMB/ADMIN$) -->
+<!-- Cubierto por regla NATIVA de Wazuh (ruleset sysmon): 92218. -->
+<!-- No se necesitó regla custom. Windows Defender detectó y puso en cuarentena -->
+<!-- el binario antes de la ejecución completa (ver docs/screenshots/08-defender-blocks-psexec.png), -->
+<!-- pero la telemetría de Sysmon sí quedó registrada y la regla nativa disparó correctamente. -->
+<!-- Ver README, sección "Movimiento Lateral (Kali + Impacket)". -->
