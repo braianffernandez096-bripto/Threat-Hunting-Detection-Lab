@@ -1,0 +1,10 @@
+<!-- T1218.010 — Regsvr32 Squiblydoo (local o remoto) -->
+<rule id="100040" level="12">
+  <if_group>sysmon_eid1_detections</if_group>
+  <field name="win.eventdata.image" type="pcre2">(?i)regsvr32\.exe$</field>
+  <field name="win.eventdata.commandLine" type="pcre2">(?i)/i:.*scrobj\.dll</field>
+  <description>Regsvr32 ejecutando un scriptlet (.sct) vía scrobj.dll — patrón Squiblydoo de bypass de AppLocker/whitelisting, local o remoto</description>
+  <mitre>
+    <id>T1218.010</id>
+  </mitre>
+</rule>
