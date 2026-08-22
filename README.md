@@ -135,7 +135,7 @@ Threat-Hunting-Detection-Engineering-Lab/
 │   └── snort-nids/
 │       └── local.rules                 ← reglas custom de Snort
 ├── n8n-workflows/
-│   └── soc-l2-workflow.json            ← export del workflow de orquestación
+│   └── soc-n8n-workflow.json            ← export del workflow de orquestación
 └── db/
     ├── schema.sql                      ← estructura de la tabla SQLite (sin el binario)
     └── sample_export.csv               ← muestra real de alertas procesadas
