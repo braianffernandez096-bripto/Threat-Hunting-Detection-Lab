@@ -381,7 +381,7 @@ n8n no tiene un nodo nativo para SQLite (a diferencia de Postgres/MySQL), así q
     -v /home/brian/n8n-data:/home/node/.n8n \
     -e N8N_BASIC_AUTH_ACTIVE=true \
     -e N8N_BASIC_AUTH_USER=admin \
-    -e N8N_BASIC_AUTH_PASSWORD=SecretPassword \
+    -e N8N_BASIC_AUTH_PASSWORD=************ \
     -e NODE_PATH=/usr/local/lib/node_modules:/home/node/.n8n/custom-modules/node_modules \
     -e NODE_FUNCTION_ALLOW_EXTERNAL=sqlite3 \
     docker.n8n.io/n8nio/n8n
