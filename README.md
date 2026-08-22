@@ -111,7 +111,7 @@ flowchart TB
 ## 📁 Estructura del repositorio
 
 ```
-Threat-Hunting-Detection-Engineering-Lab/
+Threat-Hunting-Detection-Lab/
 ├── README.md
 ├── docs/
 │   └── screenshots/
