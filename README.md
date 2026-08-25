@@ -514,6 +514,6 @@ Esto ilustra bien un punto central del proyecto: **la reputación por hash no al
 
 ---
 
-## 👤 Braian Fernandez
-
-Portafolio de ciberseguridad.
+## 👤 **Brian Fernández**
+Analista SOC en formación | Google Cybersecurity Professional
+[GitHub](https://github.com/braianffernandez096-bripto) · [LinkedIn](https://www.linkedin.com/in/braian-fernandez96)
