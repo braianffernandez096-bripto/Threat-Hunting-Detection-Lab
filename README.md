@@ -9,6 +9,8 @@
 
 ---
 
+📖 **[Guía de instalación paso a paso](docs/INSTALACION.md)** — cómo levantar el lab completo desde cero.
+
 ## 📋 Resumen ejecutivo
 
 Este proyecto simula un entorno corporativo donde un endpoint Windows es atacado usando técnicas reales de *Living-off-the-Land* (LOLBins) y **movimiento lateral con un atacante externo real** (Kali Linux), correlacionadas a nivel de host (Sysmon + Wazuh), de red (Snort NIDS), enriquecidas con reputación de archivos (VirusTotal) y orquestadas de punta a punta con **n8n**, que automatiza la detección, el enriquecimiento y la notificación sin intervención manual.
@@ -323,7 +325,6 @@ Para verificar que el pipeline funciona como orquestador real (y no solo en la c
 
 ![Alerta nueva disparando la regla 100090 en Wazuh](docs/screenshots/17-live-demo-wazuh-alert.png)
 ![Ejecución de n8n procesando la alerta en tiempo real (34.6s)](docs/screenshots/18-live-demo-n8n-execution.png)
-![Notificación nueva en Slack](docs/screenshots/19-live-demo-slack-notification.png)
 
 **Un detalle relevante sobre la deduplicación**: correr el mismo Atomic Test dos veces genera dos `alerta_id` distintos en Wazuh (aunque el hash del archivo sea idéntico) — la deduplicación de n8n opera sobre el **evento individual**, no sobre "la técnica ya fue vista antes". Esto es intencional y correcto: cada ejecución de un ataque es un evento nuevo que merece su propia notificación, aunque el análisis de reputación del archivo (VirusTotal) dé el mismo resultado que la vez anterior.
 
@@ -452,8 +453,6 @@ return new Promise((resolve, reject) => {
   });
 });
 ```
-
-![Workflow completo con SQLite integrado, procesando las 17 alertas](docs/screenshots/11-n8n-workflow-canvas-complete.png)
 
 ### Hallazgo: por qué VirusTotal reportó 0 detecciones en las 17 alertas
 
