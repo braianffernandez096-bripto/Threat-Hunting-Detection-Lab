@@ -1,10 +1,11 @@
 # 🛡️ Threat Hunting & Detection Lab
 
-[![Status](https://img.shields.io/badge/Status-Completed-brightgreen)](https://img.shields.io/badge/Status-Completed-brightgreen) [![Platform](https://img.shields.io/badge/Platform-Windows%2010-blue)](https://img.shields.io/badge/Platform-Windows%2010-blue) [![SIEM](https://img.shields.io/badge/SIEM-Wazuh%204.14.7-purple)](https://img.shields.io/badge/SIEM-Wazuh%204.14.7-purple) [![Telemetry](https://img.shields.io/badge/Telemetry-Sysmon-blue)](https://img.shields.io/badge/Telemetry-Sysmon-blue) [![NIDS](https://img.shields.io/badge/NIDS-Snort-orange)](https://img.shields.io/badge/NIDS-Snort-orange) [![Orchestration](https://img.shields.io/badge/Orchestration-n8n-red)](https://img.shields.io/badge/Orchestration-n8n-red) [![Threat Intel](https://img.shields.io/badge/Threat%20Intel-VirusTotal-blue)](https://img.shields.io/badge/Threat%20Intel-VirusTotal-blue) [![Persistence](https://img.shields.io/badge/Persistence-SQLite-lightgrey)](https://img.shields.io/badge/Persistence-SQLite-lightgrey) [![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-12%20Techniques%20Mapped-red)](https://img.shields.io/badge/MITRE%20ATT%26CK-12%20Techniques%20Mapped-red)
+[![Status](https://img.shields.io/badge/Status-Completed-brightgreen)](https://img.shields.io/badge/Status-Completed-brightgreen) [![Platform](https://img.shields.io/badge/Platform-Windows%2010-blue)](https://img.shields.io/badge/Platform-Windows%2010-blue) [![SIEM](https://img.shields.io/badge/SIEM-Wazuh%204.14.7-purple)](https://img.shields.io/badge/SIEM-Wazuh%204.14.7-purple) [![Telemetry](https://img.shields.io/badge/Telemetry-Sysmon-blue)](https://img.shields.io/badge/Telemetry-Sysmon-blue) [![NIDS](https://img.shields.io/badge/NIDS-Suricata-orange)](https://img.shields.io/badge/NIDS-Suricata-orange) [![Orchestration](https://img.shields.io/badge/Orchestration-n8n-red)](https://img.shields.io/badge/Orchestration-n8n-red) [![Notification](https://img.shields.io/badge/Notification-Telegram-26A5E4)](https://img.shields.io/badge/Notification-Telegram-26A5E4) [![Threat Intel](https://img.shields.io/badge/Threat%20Intel-VirusTotal-blue)](https://img.shields.io/badge/Threat%20Intel-VirusTotal-blue) [![Persistence](https://img.shields.io/badge/Persistence-SQLite-lightgrey)](https://img.shields.io/badge/Persistence-SQLite-lightgrey) [![MITRE ATT&CK](https://img.shields.io/badge/MITRE%20ATT%26CK-12%20Techniques%20Mapped-red)](https://img.shields.io/badge/MITRE%20ATT%26CK-12%20Techniques%20Mapped-red)
 
 **Threat hunting proactivo, ingeniería de detección, simulación de movimiento lateral y orquestación de respuesta — sobre un entorno corporativo simulado con Windows, Kali Linux y Wazuh**
 
-**Estado:** Fase host-based + Snort + Kali + VirusTotal + orquestación con n8n + persistencia en SQLite + cadena de Credential Access (BITSAdmin/LSASS/Mimikatz) completa · **Wazuh:** 4.14.7 · **Framework:** MITRE ATT&CK
+**Estado:** Fase host-based + Suricata + Kali + VirusTotal + orquestación con n8n + notificación por Telegram + persistencia en SQLite + cadena de Credential Access (BITSAdmin/LSASS/Mimikatz) completa · **Wazuh:** 4.14.7 · **Framework:** MITRE ATT&CK
+**Actualización (Nov 2026):** se migró el NIDS de Snort a Suricata (validado con tráfico real) y la notificación del pipeline de n8n de Slack a Telegram — ver [sección de actualización](#-actualización--validación-de-reglas-y-migración-a-suricata-noviembre-2026) más abajo.
 
 ---
 
@@ -27,28 +28,28 @@ flowchart TB
 
     subgraph Ubuntu ["Ubuntu · Núcleo de análisis"]
         WAZUH["🔍 Wazuh Manager\n+ Indexer + Dashboard"]
-        SNORT["🛰️ Snort NIDS\n+ Agente Wazuh local"]
+        SURICATA["🛰️ Suricata NIDS\n+ Agente Wazuh local (eve.json)"]
         VT["🌐 vt_lookup.py\n(consulta manual)"]
         N8N["⚙️ n8n\nOrquestador: detección → enriquecimiento → notificación"]
     end
 
     subgraph Externo ["Servicios externos"]
         VTAPI["VirusTotal API"]
-        SLACK["💬 Slack\n(Incoming Webhook)"]
+        TG["✈️ Telegram\n(Bot API)"]
     end
 
     WIN -->|telemetría Sysmon| WAZUH
     KALI -->|SMB / WMI / tráfico de red| WIN
-    KALI -.->|tráfico de red| SNORT
-    SNORT -->|alertas snort-fast| WAZUH
+    KALI -.->|tráfico de red| SURICATA
+    SURICATA -->|alertas eve.json — decoder nativo| WAZUH
     WAZUH -->|alertas nivel 12+ vía Indexer| N8N
     N8N -->|consulta hash| VTAPI
-    N8N -->|notificación enriquecida| SLACK
+    N8N -->|notificación enriquecida| TG
 
     classDef subgraphStyle fill:#161b22,stroke:#30363d,color:#c9d1d9
     classDef nodeStyle fill:#21262d,stroke:#58a6ff,color:#e6edf3,rx:6,ry:6
     class RedInterna,Ubuntu,Externo subgraphStyle
-    class WIN,KALI,WAZUH,SNORT,VT,N8N,VTAPI,SLACK nodeStyle
+    class WIN,KALI,WAZUH,SURICATA,VT,N8N,VTAPI,TG nodeStyle
 ```
 
 ![Vista general del dashboard de Wazuh](docs/screenshots/01-wazuh-dashboard-overview.png)
@@ -64,11 +65,11 @@ flowchart TB
 | SIEM / Correlación | Wazuh 4.14.7 (Docker) | Ingesta, reglas de detección, MITRE ATT&CK mapping |
 | Simulación de ataques (host) | Atomic Red Team | Ejecución controlada y reproducible de técnicas ATT&CK |
 | Simulación de ataques (red) | Kali Linux + Impacket | Movimiento lateral real (PsExec, WMI) desde un atacante externo |
-| Detección de red | Snort 2.9 (NIDS nativo en Ubuntu) | Detección de patrones de red — User-Agent, IOCs de descarga, canales encubiertos |
+| Detección de red | Suricata (NIDS nativo en Ubuntu, systemd) | Detección de patrones de red — User-Agent, IOCs de descarga, canales encubiertos |
 | Threat Intelligence | VirusTotal API v3 | Reputación de archivos por hash — consulta manual (script) y automática (workflow n8n) |
 | Orquestación | n8n (Docker) | Pipeline automático: detección → deduplicación → enriquecimiento → notificación |
 | Persistencia | SQLite | Deduplicación e historial de alertas enriquecidas, consultable con SQL |
-| Notificación | Slack (Incoming Webhook) | Alerta enriquecida al canal del equipo en tiempo real |
+| Notificación | Telegram (Bot API) | Alerta enriquecida y formateada (MarkdownV2) enviada a un bot personal en tiempo real |
 
 ---
 
@@ -132,10 +133,11 @@ Threat-Hunting-Detection-Lab/
 │   ├── T1197-bitsadmin/
 │   ├── T1003.001-lsass-access/
 │   ├── T1003-mimikatz/
-│   └── snort-nids/
-│       └── local.rules                 ← reglas custom de Snort
+│   └── suricata-nids/
+│       └── local.rules                 ← reglas custom de Suricata (5 reglas, validadas con tráfico real)
 ├── n8n-workflows/
-│   └── soc-n8n-workflow.json            ← export del workflow de orquestación
+│   ├── soc-n8n-workflow.json            ← export del workflow de orquestación (sanitizado: sin tokens/credenciales)
+│   └── README-reproducir-pipeline.md    ← cómo reimportar el workflow y recrear credenciales/DB
 └── db/
     ├── schema.sql                      ← estructura de la tabla SQLite (sin el binario)
     └── sample_export.csv               ← muestra real de alertas procesadas
@@ -502,6 +504,74 @@ Esto ilustra bien un punto central del proyecto: **la reputación por hash no al
 
 ---
 
+## Actualización — Validación de Reglas y Migración a Suricata (Noviembre 2026)
+
+Esta sección documenta el trabajo de validación y endurecimiento de las reglas de detección del lab, realizado contra telemetría y tráfico de ataque **real** (no simulaciones sintéticas), siguiendo la filosofía de reducir ruido y falsos negativos antes de dar por buena una regla.
+
+### 1. Validación de reglas custom de Wazuh/Sysmon
+
+**Metodología:** en vez de probar las reglas con JSON sintético en `wazuh-logtest`, se generó telemetría real desde la VM Windows (PowerShell, tareas programadas, LOLBins, Impacket) y ataques reales desde Kali, confirmando cada regla contra el log de alertas real del manager.
+
+> **Hallazgo clave:** `wazuh-logtest` decodifica el JSON crudo con el decoder genérico `json`, **no** con `windows_eventchannel`. Como las reglas de Sysmon dependen de la cadena de decoders nativa (`60000` → `60004` → `61613` → `92213`), un test sintético nunca activa esa cadena. Para estas reglas, la única validación confiable es telemetría real generada por Sysmon.
+
+**12 reglas validadas**, incluyendo:
+- Detección de PowerShell con comando en Base64, Rundll32 LOLBin, Regsvr32 (Squiblydoo), tareas programadas sospechosas, side-loading de GUP.exe, patrón de Impacket `wmiexec.py`, uso de BITSAdmin, volcado de LSASS vía `comsvcs.dll`, descarga de Mimikatz.
+- 3 reglas de reducción de ruido (falsos positivos conocidos: archivos temporales de PowerShell, artefactos de compilación en memoria de `Add-Type`, lanzamiento legítimo de `explorer.exe` vía DCOM).
+
+**Dos reglas rotas encontradas y corregidas** (100030 – Rundll32, 100090 – BITSAdmin): nunca disparaban porque su `if_group`/`if_sid` apuntaba a un grupo o regla nativa que no aplicaba a ese tráfico (`sysmon_eid1_detections` es solo una etiqueta compartida por reglas no relacionadas; `92005` exige específicamente `cmd.exe /c` + intérprete, lo cual no cubre `bitsadmin.exe`). Se corrigieron apuntando al grupo base universal `sysmon_event1`, que cubre cualquier evento Sysmon ID 1.
+
+> **Hallazgo de correlación de Wazuh:** dos reglas hijas del mismo `if_sid`/`if_group` que matchean sobre el **mismo nombre de campo** (ej. ambas sobre `win.eventdata.targetFilename`) no coexisten de forma confiable — solo una de las dos "gana" el ciclo de evaluación, independientemente de si sus condiciones son distintas. Reglas que usan **campos distintos** (ej. `targetFilename` vs `image`) sí coexisten sin problema. Esto se descubrió empíricamente aislando variables una por una (regex, backreferences, reglas de debug triviales) y obligó a fusionar dos reglas de excepción en una sola, usando el campo `image`.
+
+> **Hallazgo de telemetría:** `Add-Type` (compilación en memoria de C# vía PowerShell) genera **dos eventos FileCreate (Sysmon EID 11) distintos** para el mismo artefacto `.dll`/`.cmdline`: uno con `image=csc.exe` (el compilador real) y un duplicado con `image=powershell.exe` (el proceso host .NET). Cualquier regla de supresión para este patrón debe contemplar ambos procesos.
+
+### 2. Migración de Snort a Suricata
+
+**Decisión:** reemplazar completamente Snort por Suricata (no correr ambos en paralelo), por ventajas de multi-threading y por integración nativa de su salida EVE JSON con el decoder/ruleset propio de Wazuh. El contenido de las reglas (sintaxis estilo Snort) se reutilizó del repo original, ya que es mayormente compatible.
+
+**Instalación y configuración** (`/etc/suricata/suricata.yaml`):
+- `HOME_NET` ajustado a la red del lab (`192.168.64.0/24`)
+- Interfaz de captura (`af-packet`) configurada sobre la interfaz real de la VM
+- `threads: 1` (lab de 2 cores)
+- Reglas custom copiadas a `/var/lib/suricata/rules/local.rules` y referenciadas en `rule-files`
+
+> **Bug encontrado:** la lista `rule-files` incluía por defecto una entrada (`suricata.rules`) apuntando a un archivo que no existe hasta correr `suricata-update`. Esto hacía que Suricata **no cargara ninguna regla en absoluto** (ni siquiera las propias, presentes y bien formadas), reportando silenciosamente `"1 rule files specified, but no rules were loaded!"` sin señalar cuál entrada era la culpable. Se diagnosticó aislando la carga con el flag `-S <archivo>` (que bypassea `rule-files` y carga un único archivo directo), confirmando que el archivo propio cargaba perfecto en soledad. La solución fue eliminar la entrada inexistente de la lista.
+
+**5 reglas de red validadas con tráfico real** generado entre las VMs del lab (no solo con `-T`/test mode, sino con Suricata corriendo en captura real sobre la interfaz):
+- Descarga vía PowerShell (User-Agent `WindowsPowerShell` hacia red externa)
+- Solicitud HTTP de archivo `.sct` (patrón Squiblydoo)
+- Descarga de ejecutable `.exe` en texto plano
+- Descarga desde `raw.githubusercontent.com` (simulada vía header `Host` manual, dado que GitHub sirve ese contenido por HTTPS en la práctica)
+- Payload ICMP inusualmente grande (posible canal encubierto)
+
+**Reducción de ruido:** la regla de descarga de `.exe` generaba falsos positivos constantes contra el tráfico legítimo de Windows Update (Delivery Optimization). Se agregó una condición negativa sobre el header HTTP (`content:!"windowsupdate.com"; http_header;`) que suprime esos falsos positivos sin afectar la detección de descargas reales de ejecutables desde otros orígenes. Validado en ambos sentidos: el falso positivo deja de generar alerta, y una descarga real sigue disparando normalmente.
+
+**Persistencia:** Suricata corre como servicio `systemd` (`suricata.service`), habilitado para arrancar en el boot y con reinicio automático ante fallos — no se opera más con el comando manual `suricata -D`.
+
+### 3. Integración Suricata + Wazuh
+
+Se instaló un **agente de Wazuh** en la misma VM donde corre Suricata (separado del contenedor del manager), registrado contra el manager en `127.0.0.1` (mismo host), con un bloque `<localfile>` apuntando a `/var/log/suricata/eve.json` con `log_format: json`.
+
+Confirmado end-to-end: las alertas de Suricata llegan al manager, son procesadas por el **decoder y ruleset nativo de Suricata de Wazuh** (sin necesidad de reglas custom adicionales), y aparecen como alertas con `rule.id: 86601` y grupo `suricata`, preservando el `signature_id` y la descripción original de la regla de red. Las alertas de red ahora son visibles en el mismo dashboard que las de Sysmon/endpoint.
+
+### 4. Rebuild del pipeline de automatización (n8n) y migración a Telegram
+
+El pipeline de enriquecimiento y notificación de alertas (n8n + VirusTotal), que antes usaba Slack, se reconstruyó desde cero sobre la nueva IP del Indexer y se migró a **Telegram** como canal de notificación.
+
+**Arquitectura del flujo:** `Schedule Trigger → consulta al Indexer de Wazuh (Basic Auth) → deduplicación contra SQLite → enriquecimiento por hash en VirusTotal (Header Auth) → registro en SQLite → construcción del mensaje → envío a un bot de Telegram`.
+
+- **Deduplicación con SQLite:** se usa una tabla local (`alertas`) para no reprocesar ni renotificar alertas ya vistas, consultando por `alerta_id` antes de notificar e insertando (`INSERT OR REPLACE`) después de notificar.
+- **Enriquecimiento:** por cada alerta con hash SHA256 disponible, se consulta VirusTotal (`/api/v3/files/{sha256}`) y se agrega al mensaje la cantidad de motores que la marcan como maliciosa/sospechosa y los nombres con los que fue vista.
+
+> **Hallazgo:** n8n bloquea por defecto el uso de módulos externos de Node.js (`require`) dentro de los nodos Code, incluyendo `sqlite3`, usado para la deduplicación. Se resolvió habilitando explícitamente el módulo vía la variable de entorno `NODE_FUNCTION_ALLOW_EXTERNAL=sqlite3` en el contenedor de n8n.
+
+> **Hallazgo:** al migrar el mensaje de Slack a Telegram, el modo `Markdown` (legacy) de Telegram rompía el envío con errores como `"Can't find end of the entity starting at byte offset ..."` cada vez que el texto de una alerta (rutas de Windows, líneas de comando, patrones de ataque) contenía un carácter especial sin pareja — por ejemplo, el guion bajo doble en el patrón de Impacket `ADMIN$\__(timestamp)`. Esto es estructural: el contenido de una alerta de seguridad es dato técnico arbitrario, no texto controlado, por lo que siempre puede incluir `_`, `*`, `` ` ``, `(`, `)`, etc. de forma impredecible. La solución fue migrar a `MarkdownV2` e implementar funciones de escape (`escMd2`, `escMd2Code`) que escapan los caracteres reservados únicamente en los valores dinámicos interpolados, preservando intactos los marcadores de formato (negritas, bloques de código) escritos a mano en la plantilla del mensaje.
+
+El mensaje final a Telegram quedó organizado en secciones (datos del objetivo, detalles de la regla, contexto de usuario, inteligencia MITRE ATT&CK, resultado de VirusTotal), con un emoji de severidad que varía según el nivel de la alerta de Wazuh (🟢 baja, 🟡 media, 🔴 alta, 🚨 crítica).
+
+Instrucciones completas para reimportar el workflow y recrear credenciales: [`n8n-workflows/README-reproducir-pipeline.md`](n8n-workflows/README-reproducir-pipeline.md).
+
+---
+
 ## 🗺️ Roadmap
 
 - [x] Completar las 6 técnicas LOLBin host-based
@@ -511,6 +581,10 @@ Esto ilustra bien un punto central del proyecto: **la reputación por hash no al
 - [x] Instalar n8n y portar la lógica de `wazuh_vt_enrich.py` a un workflow visual con deduplicación y notificación a Slack
 - [x] Migrar la deduplicación de static data a SQLite, con historial completo de alertas enriquecidas consultable por SQL
 - [x] Sumar cadena de Credential Access/Persistence: BITSAdmin (T1197), LSASS Memory Access (T1003.001) y Mimikatz Indicators (T1003)
+- [x] Validar las 12 reglas custom de Wazuh/Sysmon contra telemetría real, corrigiendo 2 reglas rotas (100030, 100090)
+- [x] Migrar el NIDS de Snort a Suricata, con 5 reglas validadas contra tráfico real y persistencia vía systemd
+- [x] Integrar Suricata con Wazuh vía agente nativo (eve.json → decoder nativo de Suricata)
+- [x] Reconstruir el pipeline de n8n y migrar la notificación de Slack a Telegram (mensajes MarkdownV2 resistentes a caracteres especiales)
 
 ---
 
