@@ -8,6 +8,3 @@
     <id>T1218.011</id>
   </mitre>
 </rule>
-<!-- NOTA (Nov 2026): esta regla no disparaba — if_group apuntaba a "sysmon_eid1_detections",
-     una etiqueta que no cubre este tráfico. Corregida apuntando al grupo base universal
-     "sysmon_event1" (cualquier evento Sysmon ID 1), validada con tráfico real. -->

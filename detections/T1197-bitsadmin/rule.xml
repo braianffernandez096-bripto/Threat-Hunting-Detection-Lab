@@ -9,7 +9,3 @@
   </mitre>
   <group>bitsadmin,lolbin,local</group>
 </rule>
-<!-- NOTA (Nov 2026): esta regla no disparaba — if_sid apuntaba a la regla nativa 92005
-     ("Command shell started with /c modifier"), que exige específicamente cmd.exe /c + intérprete,
-     y no cubre bitsadmin.exe. Corregida apuntando al grupo base universal "sysmon_event1"
-     (cualquier evento Sysmon ID 1), validada con tráfico real. -->
