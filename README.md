@@ -117,7 +117,8 @@ Threat-Hunting-Detection-Lab/
 ├── docs/
 │   └── screenshots/
 ├── detections/
-│   ├── local_rules_custom.xml          ← todas las reglas custom, consolidadas
+│   ├── sysmon-rules/
+│   │   └── local_rules.xml             ← todas las reglas custom de Wazuh/Sysmon, consolidadas (12 reglas validadas)
 │   ├── virustotal-enrichment/
 │   │   ├── vt_lookup.py                ← consulta manual de un hash
 │   │   └── wazuh_vt_enrich.py          ← script original — prototipo del workflow de n8n
@@ -135,12 +136,12 @@ Threat-Hunting-Detection-Lab/
 │   ├── T1003-mimikatz/
 │   └── suricata-nids/
 │       └── local.rules                 ← reglas custom de Suricata (5 reglas, validadas con tráfico real)
-├── n8n-workflows/
-│   ├── soc-n8n-workflow.json            ← export del workflow de orquestación (sanitizado: sin tokens/credenciales)
-│   └── README-reproducir-pipeline.md    ← cómo reimportar el workflow y recrear credenciales/DB
-└── db/
-    ├── schema.sql                      ← estructura de la tabla SQLite (sin el binario)
-    └── sample_export.csv               ← muestra real de alertas procesadas
+└── n8n-workflows/
+    ├── soc-n8n-workflow.json            ← export del workflow de orquestación (sanitizado: sin tokens/credenciales)
+    ├── README-reproducir-pipeline.md    ← cómo reimportar el workflow y recrear credenciales/DB
+    └── db/
+        ├── schema.sql                  ← estructura de la tabla SQLite (sin el binario)
+        └── sample_export.csv           ← muestra real de alertas procesadas
 ```
 
 ---

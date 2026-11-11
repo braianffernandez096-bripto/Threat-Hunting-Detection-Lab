@@ -1,6 +1,6 @@
 <!-- T1218.011 — Rundll32 proxy execution vía DLLs LOLBin conocidas -->
 <rule id="100030" level="12">
-  <if_group>sysmon_eid1_detections</if_group>
+  <if_group>sysmon_event1</if_group>
   <field name="win.eventdata.image" type="pcre2">(?i)rundll32\.exe$</field>
   <field name="win.eventdata.commandLine" type="pcre2">(?i)(pcwutl\.dll,LaunchApplication|advpack\.dll,LaunchINFSection|ieadvpack\.dll,LaunchINFSection|syssetup\.dll,SetupInfObjectInstallAction|setupapi\.dll,InstallHinfSection|url\.dll,OpenURL|url\.dll,FileProtocolHandler)</field>
   <description>Rundll32 ejecutando una función conocida de proxy execution (LOLBin) — posible evasión de controles de ejecución de binarios</description>
@@ -8,3 +8,6 @@
     <id>T1218.011</id>
   </mitre>
 </rule>
+<!-- NOTA (Nov 2026): esta regla no disparaba — if_group apuntaba a "sysmon_eid1_detections",
+     una etiqueta que no cubre este tráfico. Corregida apuntando al grupo base universal
+     "sysmon_event1" (cualquier evento Sysmon ID 1), validada con tráfico real. -->

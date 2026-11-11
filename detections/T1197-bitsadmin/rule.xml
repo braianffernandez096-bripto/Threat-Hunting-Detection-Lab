@@ -1,6 +1,6 @@
 <!-- T1197 — BITSAdmin usado para transferencia de archivos (descarga/exfiltración) -->
 <rule id="100090" level="12">
-  <if_sid>92005</if_sid>
+  <if_group>sysmon_event1</if_group>
   <field name="win.eventdata.image" type="pcre2">(?i)bitsadmin\.exe$</field>
   <field name="win.eventdata.commandLine" type="pcre2">(?i)/transfer.*(/download|/upload)</field>
   <description>Uso de BITSAdmin para transferencia de archivos — posible descarga de payload o exfiltración vía BITS Jobs</description>
@@ -9,3 +9,7 @@
   </mitre>
   <group>bitsadmin,lolbin,local</group>
 </rule>
+<!-- NOTA (Nov 2026): esta regla no disparaba — if_sid apuntaba a la regla nativa 92005
+     ("Command shell started with /c modifier"), que exige específicamente cmd.exe /c + intérprete,
+     y no cubre bitsadmin.exe. Corregida apuntando al grupo base universal "sysmon_event1"
+     (cualquier evento Sysmon ID 1), validada con tráfico real. -->
