@@ -6,6 +6,7 @@ El repo ya no menciona Snort ni Slack en ningún lado excepto en estos dos archi
 
 - `docs/README-update-nov2026.md` → todo su contenido ya está integrado dentro de la sección "Actualización" del `README.md` principal. Mantenerlo sería tener el mismo texto duplicado en dos lugares, uno de ellos (este) todavía con el lenguaje viejo.
 - `INSTRUCCIONES.md` (este archivo, en la raíz) → ya cumplió su función como nota de trabajo puntual. Una vez subido el `README.md` actualizado, no aporta nada que no esté ya reflejado en el repo.
+- `docs/screenshots/02-wazuh-agent-registered.png` y `docs/screenshots/03-wazuh-agent-detail-mitre.png` → no están referenciadas en ningún texto del README y son redundantes con `01-wazuh-dashboard-overview.png` (dashboard general) y `04-detection-rule-92071.png` (regla nativa disparando con detalle), que ya cubren ese tipo de muestra visual.
 
 ## Archivo a subir
 
