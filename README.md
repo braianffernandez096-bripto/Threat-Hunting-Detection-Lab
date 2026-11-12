@@ -192,7 +192,7 @@ No se requiere ninguna credencial propia del autor: cada integración (VirusTota
 - [x] Completar las 6 técnicas LOLBin host-based
 - [x] Configurar Kali Linux como atacante y simular movimiento lateral (PsExec, WMI)
 - [x] Implementar enriquecimiento con VirusTotal (script standalone, prototipo para n8n)
-- [x] Instalar n8n y portar la lógica de `wazuh_vt_enrich.py` a un workflow visual con deduplicación y notificación a Telegram
+- [x] Instalar n8n y portar la lógica de `wazuh_vt_enrich.py` a un workflow visual con deduplicación y notificación automática
 - [x] Migrar la deduplicación de static data a SQLite, con historial completo de alertas enriquecidas consultable por SQL
 - [x] Sumar cadena de Credential Access/Persistence: BITSAdmin (T1197), LSASS Memory Access (T1003.001) y Mimikatz Indicators (T1003)
 - [x] Validar las 12 reglas custom de Wazuh/Sysmon contra telemetría real, corrigiendo 2 reglas rotas (100030, 100090)
