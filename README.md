@@ -153,8 +153,8 @@ Threat-Hunting-Detection-Lab/
 ### T1059.001 — PowerShell EncodedCommand
 Regla nativa 92071 + custom 100020. Falsos positivos (`PSScriptPolicyTest`, `csc.exe`) resueltos con reglas de excepción.
 
-![Regla nativa disparando](docs/screenshots/04-detection-rule-92071.png)
-![Telemetría completa capturada](docs/screenshots/05-sysmon-commandline-capture.png)
+![Regla nativa disparando](docs/screenshots/02-detection-rule-92071.png)
+![Telemetría completa capturada](docs/screenshots/03-sysmon-commandline-capture.png)
 
 ### T1140 — CertUtil masqueraded (rename + decode)
 Test `T1140-2`: `certutil.exe` renombrado a `tcm.tmp`. `originalFileName` seguía delatando el binario real. **Dos reglas nativas** cubren el patrón: `92017` (decodificación) y `92016` (nombre distinto al esperado) — cobertura nativa robusta sin necesidad de regla propia.
@@ -165,7 +165,7 @@ Sin cobertura nativa. Regla custom `100030` cubre múltiples DLLs LOLBin conocid
 ### T1218.010 — Regsvr32 (Squiblydoo)
 El test remoto fue bloqueado por Defender (`Trojan:Win32/Powemet.A!attk`).
 
-![Defender bloqueando Squiblydoo remoto](docs/screenshots/06-defender-blocks-squiblydoo.png)
+![Defender bloqueando Squiblydoo remoto](docs/screenshots/04-defender-blocks-squiblydoo.png)
 
 Regla custom `100040` detecta el patrón local o remoto.
 
@@ -178,7 +178,7 @@ Regla custom `100060` detecta el binario legítimo fuera de su carpeta esperada.
 ### T1218.005 — Mshta (telemetría parcial)
 Bloqueado por Defender en un intento; en otro, ejecutó pero el evento nunca llegó a Wazuh — ver causa raíz en Lecciones Aprendidas.
 
-![Defender bloqueando Mshta con VBScript](docs/screenshots/07-defender-blocks-mshta-vbscript.png)
+![Defender bloqueando Mshta con VBScript](docs/screenshots/05-defender-blocks-mshta-vbscript.png)
 
 ---
 
@@ -191,8 +191,8 @@ Requirió deshabilitar `LocalAccountTokenFilterPolicy` (protección UAC remota q
 - **Windows Defender** detectó y puso en cuarentena el binario (`VirTool:Win32/RemoteExec!pz`) antes de que se ejecutara.
 - **Wazuh** detectó igual, vía la regla nativa **92218** sobre el evento de creación de archivo — sin necesidad de regla propia.
 
-![Windows Defender detecta y pone en cuarentena el binario de PsExec](docs/screenshots/08-defender-blocks-psexec.png)
-![PsExec ejecutado con éxito desde Kali](docs/screenshots/09-kali-psexec-success.png)
+![Windows Defender detecta y pone en cuarentena el binario de PsExec](docs/screenshots/06-defender-blocks-psexec.png)
+![PsExec ejecutado con éxito desde Kali](docs/screenshots/07-kali-psexec-success.png)
 
 ### T1047 — WMI remoto (Impacket wmiexec)
 
@@ -201,7 +201,7 @@ Requirió habilitar el grupo de firewall **"Instrumental de administración de W
 - **Windows Defender no detectó nada** — WMI no dropea binarios, usa `WmiPrvSE.exe` (100% legítimo).
 - **Sin cobertura nativa en Wazuh.** Regla custom **100070** detecta el patrón característico de `wmiexec.py`: `cmd.exe` redirigiendo la salida a `ADMIN$\__<timestamp>` (necesario porque WMI no tiene canal de salida interactivo nativo).
 
-![WMI remoto ejecutado con éxito desde Kali, sin alertas de Defender](docs/screenshots/10-kali-wmiexec-success.png)
+![WMI remoto ejecutado con éxito desde Kali, sin alertas de Defender](docs/screenshots/08-kali-wmiexec-success.png)
 
 **Contraste documentado**: PsExec neutralizado por AV pero detectado por SIEM; WMI evadió AV pero fue detectado por comportamiento — dos técnicas, mismo objetivo, perfiles de detección opuestos.
 
@@ -219,7 +219,7 @@ BITS (*Background Intelligent Transfer Service*) es un servicio legítimo de Win
 
 Regla custom `100090` (nivel 12) detecta `bitsadmin.exe` con `/transfer` + `/download`/`/upload` en el command line, validada con éxito.
 
-![BITSAdmin disparando la regla custom 100090](docs/screenshots/12-bitsadmin-rule-100090.png)
+![BITSAdmin disparando la regla custom 100090](docs/screenshots/10-bitsadmin-rule-100090.png)
 
 ### T1003.001 — LSASS Memory Access
 
@@ -229,7 +229,7 @@ Test ejecutado: volcado de memoria de LSASS vía `rundll32.exe comsvcs.dll, Mini
 
 Esto es un punto ciego real y honesto de documentar: si un atacante usara una variante que evada esa firma puntual de Defender, el SIEM quedaría completamente ciego ante el mismo ataque. Se cargó la regla custom `100100` (nivel 12) con el patrón esperado (`rundll32.exe` + `comsvcs.dll` + `MiniDump`), dejando explícito en la descripción que no pudo validarse con un evento real.
 
-![Windows Defender bloqueando el volcado de LSASS](docs/screenshots/13-defender-blocks-lsass-dump.png)
+![Windows Defender bloqueando el volcado de LSASS](docs/screenshots/11-defender-blocks-lsass-dump.png)
 
 ### T1003 — Mimikatz Indicators
 
@@ -239,7 +239,7 @@ Test ejecutado: `Invoke-Mimikatz -DumpCreds`, descargado en memoria vía `IEX + 
 
 Se cargó igualmente la regla custom `100110` (nivel 14 — la más alta de todas las custom del proyecto, dado que la mención explícita de "Mimikatz" en un command line es una señal casi inequívoca), detectando `powershell.exe` con `downloadstring` + `mimikatz` en el command line, con la misma limitación documentada en su descripción.
 
-![Windows Defender bloqueando Mimikatz vía PowerShell](docs/screenshots/14-defender-blocks-mimikatz.png)
+![Windows Defender bloqueando Mimikatz vía PowerShell](docs/screenshots/12-defender-blocks-mimikatz.png)
 
 **Contraste con BITSAdmin**: BITSAdmin no tiene firma de AV, así que llegó a ejecutarse completo y generar telemetría real — la regla se pudo validar de punta a punta. LSASS y Mimikatz sí tienen firmas de AV muy maduras, así que la prevención ganó la carrera antes que la detección — mostrando en la práctica el trade-off entre técnicas "ruidosas mas invisibles para el AV" (WMI, BITSAdmin) y técnicas "silenciosas para el SIEM pero bloqueadas por el AV" (LSASS, Mimikatz).
 
@@ -312,7 +312,7 @@ El script `wazuh_vt_enrich.py` funcionaba, pero requería ejecución manual, no 
 - **Deduplicación validada**: la primera corrida procesó las 17 alertas de la sesión (≈4m 43s, respetando el rate limit); las corridas siguientes, sin alertas nuevas, terminan en ~100ms sin consultar VT ni consumir cuota.
 - **Notificación validada**: las 17 alertas enriquecidas llegaron correctamente al bot de Telegram configurado, con el resumen de VirusTotal, regla, técnica MITRE, imagen y hash de cada una.
 
-![Ejecución rápida por deduplicación vs. ejecución completa](docs/screenshots/11-n8n-executions-dedup-timing.png)
+![Ejecución rápida por deduplicación vs. ejecución completa](docs/screenshots/09-n8n-executions-dedup-timing.png)
 
 ### Demo en vivo: el pipeline completo reaccionando a una alerta nueva
 
@@ -323,8 +323,8 @@ Para verificar que el pipeline funciona como orquestador real (y no solo en la c
 3. **SQLite registra la alerta** con su resultado de VT y timestamp.
 4. **Telegram recibe la notificación** con el resumen enriquecido.
 
-![Alerta nueva disparando la regla 100090 en Wazuh](docs/screenshots/15-live-demo-wazuh-alert.png)
-![Ejecución de n8n procesando la alerta en tiempo real (34.6s)](docs/screenshots/16-live-demo-n8n-execution.png)
+![Alerta nueva disparando la regla 100090 en Wazuh](docs/screenshots/13-live-demo-wazuh-alert.png)
+![Ejecución de n8n procesando la alerta en tiempo real (34.6s)](docs/screenshots/14-live-demo-n8n-execution.png)
 
 **Un detalle relevante sobre la deduplicación**: correr el mismo Atomic Test dos veces genera dos `alerta_id` distintos en Wazuh (aunque el hash del archivo sea idéntico) — la deduplicación de n8n opera sobre el **evento individual**, no sobre "la técnica ya fue vista antes". Esto es intencional y correcto: cada ejecución de un ataque es un evento nuevo que merece su propia notificación, aunque el análisis de reputación del archivo (VirusTotal) dé el mismo resultado que la vez anterior.
 
@@ -568,7 +568,7 @@ El pipeline de enriquecimiento y notificación de alertas (n8n + VirusTotal) se 
 
 El mensaje final a Telegram quedó organizado en secciones (datos del objetivo, detalles de la regla, contexto de usuario, inteligencia MITRE ATT&CK, resultado de VirusTotal), con un emoji de severidad que varía según el nivel de la alerta de Wazuh (🟢 baja, 🟡 media, 🔴 alta, 🚨 crítica).
 
-<img src="docs/screenshots/17-telegram-alert-notification.png" alt="Alerta de Wazuh recibida en Telegram, formateada en MarkdownV2" width="360">
+<img src="docs/screenshots/15-telegram-alert-notification.png" alt="Alerta de Wazuh recibida en Telegram, formateada en MarkdownV2" width="360">
 
 Instrucciones completas para reimportar el workflow y recrear credenciales: [`n8n-workflows/README-reproducir-pipeline.md`](n8n-workflows/README-reproducir-pipeline.md).
 
