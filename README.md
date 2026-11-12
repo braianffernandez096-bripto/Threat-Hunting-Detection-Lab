@@ -5,7 +5,7 @@
 **Threat hunting proactivo, ingeniería de detección, simulación de movimiento lateral y orquestación de respuesta — sobre un entorno corporativo simulado con Windows, Kali Linux y Wazuh**
 
 **Estado:** Fase host-based + Suricata + Kali + VirusTotal + orquestación con n8n + notificación por Telegram + persistencia en SQLite + cadena de Credential Access (BITSAdmin/LSASS/Mimikatz) completa · **Wazuh:** 4.14.7 · **Framework:** MITRE ATT&CK
-**Actualización (Nov 2026):** se migró el NIDS de Snort a Suricata (validado con tráfico real) y la notificación del pipeline de n8n de Slack a Telegram — ver [sección de actualización](#-actualización--validación-de-reglas-y-migración-a-suricata-noviembre-2026) más abajo.
+**Última actualización (Nov 2026):** reglas de detección validadas contra tráfico real, NIDS endurecido y pipeline de notificación con Telegram — ver sección de actualización más abajo.
 
 ---
 
@@ -13,7 +13,7 @@
 
 ## 📋 Resumen ejecutivo
 
-Este proyecto simula un entorno corporativo donde un endpoint Windows es atacado usando técnicas reales de *Living-off-the-Land* (LOLBins) y **movimiento lateral con un atacante externo real** (Kali Linux), correlacionadas a nivel de host (Sysmon + Wazuh), de red (Snort NIDS), enriquecidas con reputación de archivos (VirusTotal) y orquestadas de punta a punta con **n8n**, que automatiza la detección, el enriquecimiento y la notificación sin intervención manual.
+Este proyecto simula un entorno corporativo donde un endpoint Windows es atacado usando técnicas reales de *Living-off-the-Land* (LOLBins) y **movimiento lateral con un atacante externo real** (Kali Linux), correlacionadas a nivel de host (Sysmon + Wazuh), de red (Suricata NIDS), enriquecidas con reputación de archivos (VirusTotal) y orquestadas de punta a punta con **n8n**, que automatiza la detección, el enriquecimiento y la notificación sin intervención manual.
 
 El objetivo no es solo detectar — es **documentar el razonamiento de análisis**: qué se detectó, por qué, qué fue ruido, qué falló y por qué, y cómo se ajustó la detección con criterio profesional.
 
@@ -81,10 +81,10 @@ flowchart TB
 
 | Técnica | ID | Estado | Detección |
 |---|---|---|---|
-| PowerShell EncodedCommand | T1059.001 | ✅ Completo | Nativa (92071) + custom (100020) + Snort (User-Agent) |
+| PowerShell EncodedCommand | T1059.001 | ✅ Completo | Nativa (92071) + custom (100020) + Suricata (User-Agent) |
 | CertUtil (masquerading + decode) | T1140 | ✅ Completo | Nativa (92016 + 92017) |
 | Rundll32 proxy execution | T1218.011 | ✅ Completo | Custom (100030) |
-| Regsvr32 (Squiblydoo) | T1218.010 | ✅ Completo | Custom (100040) + Snort (.sct) |
+| Regsvr32 (Squiblydoo) | T1218.010 | ✅ Completo | Custom (100040) + Suricata (.sct) |
 | Scheduled Task persistence | T1053.005 | ✅ Completo | Custom (100050) |
 | DLL Side-Loading (masquerading) | T1574.001¹ | ✅ Completo | Custom (100060) |
 | Mshta | T1218.005 | ⚠️ Telemetría parcial² | — |
@@ -219,7 +219,7 @@ BITS (*Background Intelligent Transfer Service*) es un servicio legítimo de Win
 
 Regla custom `100090` (nivel 12) detecta `bitsadmin.exe` con `/transfer` + `/download`/`/upload` en el command line, validada con éxito.
 
-![BITSAdmin disparando la regla custom 100090](docs/screenshots/14-bitsadmin-rule-100090.png)
+![BITSAdmin disparando la regla custom 100090](docs/screenshots/12-bitsadmin-rule-100090.png)
 
 ### T1003.001 — LSASS Memory Access
 
@@ -229,7 +229,7 @@ Test ejecutado: volcado de memoria de LSASS vía `rundll32.exe comsvcs.dll, Mini
 
 Esto es un punto ciego real y honesto de documentar: si un atacante usara una variante que evada esa firma puntual de Defender, el SIEM quedaría completamente ciego ante el mismo ataque. Se cargó la regla custom `100100` (nivel 12) con el patrón esperado (`rundll32.exe` + `comsvcs.dll` + `MiniDump`), dejando explícito en la descripción que no pudo validarse con un evento real.
 
-![Windows Defender bloqueando el volcado de LSASS](docs/screenshots/15-defender-blocks-lsass-dump.png)
+![Windows Defender bloqueando el volcado de LSASS](docs/screenshots/13-defender-blocks-lsass-dump.png)
 
 ### T1003 — Mimikatz Indicators
 
@@ -239,7 +239,7 @@ Test ejecutado: `Invoke-Mimikatz -DumpCreds`, descargado en memoria vía `IEX + 
 
 Se cargó igualmente la regla custom `100110` (nivel 14 — la más alta de todas las custom del proyecto, dado que la mención explícita de "Mimikatz" en un command line es una señal casi inequívoca), detectando `powershell.exe` con `downloadstring` + `mimikatz` en el command line, con la misma limitación documentada en su descripción.
 
-![Windows Defender bloqueando Mimikatz vía PowerShell](docs/screenshots/16-defender-blocks-mimikatz.png)
+![Windows Defender bloqueando Mimikatz vía PowerShell](docs/screenshots/14-defender-blocks-mimikatz.png)
 
 **Contraste con BITSAdmin**: BITSAdmin no tiene firma de AV, así que llegó a ejecutarse completo y generar telemetría real — la regla se pudo validar de punta a punta. LSASS y Mimikatz sí tienen firmas de AV muy maduras, así que la prevención ganó la carrera antes que la detección — mostrando en la práctica el trade-off entre técnicas "ruidosas mas invisibles para el AV" (WMI, BITSAdmin) y técnicas "silenciosas para el SIEM pero bloqueadas por el AV" (LSASS, Mimikatz).
 
@@ -294,7 +294,7 @@ El script `wazuh_vt_enrich.py` funcionaba, pero requería ejecución manual, no 
 | 8 | **HTTP Request** (VirusTotal) | Consulta la reputación del hash contra la API v3 de VT |
 | 9 | **Code** (registro) | Marca la alerta como procesada en el static data |
 | 10 | **Code** (formateo) | Arma el mensaje final con el resumen de VT (maliciosos/sospechosos/motores) |
-| 11 | **HTTP Request** (Slack) | Envía la notificación al canal vía Incoming Webhook |
+| 11 | **HTTP Request** (Telegram) | Envía la notificación al bot vía Bot API |
 | 12 | **Wait (16s)** | Respeta el rate limit del tier gratuito de VT (4 req/min), y vuelve a alimentar el loop |
 
 ### Decisiones técnicas y desafíos resueltos
@@ -310,9 +310,9 @@ El script `wazuh_vt_enrich.py` funcionaba, pero requería ejecución manual, no 
 ### Resultado en producción
 
 - **Deduplicación validada**: la primera corrida procesó las 17 alertas de la sesión (≈4m 43s, respetando el rate limit); las corridas siguientes, sin alertas nuevas, terminan en ~100ms sin consultar VT ni consumir cuota.
-- **Notificación validada**: las 17 alertas enriquecidas llegaron correctamente al canal de Slack configurado, con el resumen de VirusTotal, regla, técnica MITRE, imagen y hash de cada una.
+- **Notificación validada**: las 17 alertas enriquecidas llegaron correctamente al bot de Telegram configurado, con el resumen de VirusTotal, regla, técnica MITRE, imagen y hash de cada una.
 
-![Ejecución rápida por deduplicación vs. ejecución completa](docs/screenshots/12-n8n-executions-dedup-timing.png)
+![Ejecución rápida por deduplicación vs. ejecución completa](docs/screenshots/11-n8n-executions-dedup-timing.png)
 
 ### Demo en vivo: el pipeline completo reaccionando a una alerta nueva
 
@@ -321,10 +321,10 @@ Para verificar que el pipeline funciona como orquestador real (y no solo en la c
 1. **Wazuh genera la alerta nueva** (`rule.id: 100090`, nivel 12) al ejecutarse el test en la VM Windows.
 2. **n8n la recoge en su próximo ciclo** (máx. 5 min después) y corre el pipeline completo — la ejecución tardó **34.6 segundos** (vs. los ~100-600ms de los ciclos vacíos cuando no hay alertas nuevas), señal clara de que esta vez sí procesó una alerta real, consultando VirusTotal.
 3. **SQLite registra la alerta** con su resultado de VT y timestamp.
-4. **Slack recibe la notificación** con el resumen enriquecido.
+4. **Telegram recibe la notificación** con el resumen enriquecido.
 
-![Alerta nueva disparando la regla 100090 en Wazuh](docs/screenshots/17-live-demo-wazuh-alert.png)
-![Ejecución de n8n procesando la alerta en tiempo real (34.6s)](docs/screenshots/18-live-demo-n8n-execution.png)
+![Alerta nueva disparando la regla 100090 en Wazuh](docs/screenshots/15-live-demo-wazuh-alert.png)
+![Ejecución de n8n procesando la alerta en tiempo real (34.6s)](docs/screenshots/16-live-demo-n8n-execution.png)
 
 **Un detalle relevante sobre la deduplicación**: correr el mismo Atomic Test dos veces genera dos `alerta_id` distintos en Wazuh (aunque el hash del archivo sea idéntico) — la deduplicación de n8n opera sobre el **evento individual**, no sobre "la técnica ya fue vista antes". Esto es intencional y correcto: cada ejecución de un ataque es un evento nuevo que merece su propia notificación, aunque el análisis de reputación del archivo (VirusTotal) dé el mismo resultado que la vez anterior.
 
@@ -335,7 +335,7 @@ Para verificar que el pipeline funciona como orquestador real (y no solo en la c
 | Ejecución | Manual (`python3 wazuh_vt_enrich.py`) | Automática, cada 5 minutos |
 | Deduplicación | Archivo `.vt_procesados.json` → migrado a SQLite | Static data → migrado a SQLite |
 | Rate limiting | `time.sleep(16)` | Loop + nodo Wait |
-| Salida | `print()` en consola | Notificación en Slack |
+| Salida | `print()` en consola | Notificación en Telegram |
 | Mantenimiento | Requiere editar código Python | Editable visualmente, sin tocar código en la mayoría de los cambios |
 
 ---
@@ -504,7 +504,7 @@ Esto ilustra bien un punto central del proyecto: **la reputación por hash no al
 
 ---
 
-## Actualización — Validación de Reglas y Migración a Suricata (Noviembre 2026)
+## Actualización — Validación de Reglas y Refuerzo de Detección (Noviembre 2026)
 
 Esta sección documenta el trabajo de validación y endurecimiento de las reglas de detección del lab, realizado contra telemetría y tráfico de ataque **real** (no simulaciones sintéticas), siguiendo la filosofía de reducir ruido y falsos negativos antes de dar por buena una regla.
 
@@ -524,9 +524,9 @@ Esta sección documenta el trabajo de validación y endurecimiento de las reglas
 
 > **Hallazgo de telemetría:** `Add-Type` (compilación en memoria de C# vía PowerShell) genera **dos eventos FileCreate (Sysmon EID 11) distintos** para el mismo artefacto `.dll`/`.cmdline`: uno con `image=csc.exe` (el compilador real) y un duplicado con `image=powershell.exe` (el proceso host .NET). Cualquier regla de supresión para este patrón debe contemplar ambos procesos.
 
-### 2. Migración de Snort a Suricata
+### 2. Instalación y hardening de Suricata (NIDS)
 
-**Decisión:** reemplazar completamente Snort por Suricata (no correr ambos en paralelo), por ventajas de multi-threading y por integración nativa de su salida EVE JSON con el decoder/ruleset propio de Wazuh. El contenido de las reglas (sintaxis estilo Snort) se reutilizó del repo original, ya que es mayormente compatible.
+**Decisión:** Suricata como NIDS único del lab, por ventajas de multi-threading y por integración nativa de su salida EVE JSON con el decoder/ruleset propio de Wazuh.
 
 **Instalación y configuración** (`/etc/suricata/suricata.yaml`):
 - `HOME_NET` ajustado a la red del lab (`192.168.64.0/24`)
@@ -553,9 +553,9 @@ Se instaló un **agente de Wazuh** en la misma VM donde corre Suricata (separado
 
 Confirmado end-to-end: las alertas de Suricata llegan al manager, son procesadas por el **decoder y ruleset nativo de Suricata de Wazuh** (sin necesidad de reglas custom adicionales), y aparecen como alertas con `rule.id: 86601` y grupo `suricata`, preservando el `signature_id` y la descripción original de la regla de red. Las alertas de red ahora son visibles en el mismo dashboard que las de Sysmon/endpoint.
 
-### 4. Rebuild del pipeline de automatización (n8n) y migración a Telegram
+### 4. Pipeline de automatización (n8n) con notificación por Telegram
 
-El pipeline de enriquecimiento y notificación de alertas (n8n + VirusTotal), que antes usaba Slack, se reconstruyó desde cero sobre la nueva IP del Indexer y se migró a **Telegram** como canal de notificación.
+El pipeline de enriquecimiento y notificación de alertas (n8n + VirusTotal) se reconstruyó desde cero sobre la nueva IP del Indexer, con **Telegram** como canal de notificación.
 
 **Arquitectura del flujo:** `Schedule Trigger → consulta al Indexer de Wazuh (Basic Auth) → deduplicación contra SQLite → enriquecimiento por hash en VirusTotal (Header Auth) → registro en SQLite → construcción del mensaje → envío a un bot de Telegram`.
 
@@ -564,9 +564,11 @@ El pipeline de enriquecimiento y notificación de alertas (n8n + VirusTotal), qu
 
 > **Hallazgo:** n8n bloquea por defecto el uso de módulos externos de Node.js (`require`) dentro de los nodos Code, incluyendo `sqlite3`, usado para la deduplicación. Se resolvió habilitando explícitamente el módulo vía la variable de entorno `NODE_FUNCTION_ALLOW_EXTERNAL=sqlite3` en el contenedor de n8n.
 
-> **Hallazgo:** al migrar el mensaje de Slack a Telegram, el modo `Markdown` (legacy) de Telegram rompía el envío con errores como `"Can't find end of the entity starting at byte offset ..."` cada vez que el texto de una alerta (rutas de Windows, líneas de comando, patrones de ataque) contenía un carácter especial sin pareja — por ejemplo, el guion bajo doble en el patrón de Impacket `ADMIN$\__(timestamp)`. Esto es estructural: el contenido de una alerta de seguridad es dato técnico arbitrario, no texto controlado, por lo que siempre puede incluir `_`, `*`, `` ` ``, `(`, `)`, etc. de forma impredecible. La solución fue migrar a `MarkdownV2` e implementar funciones de escape (`escMd2`, `escMd2Code`) que escapan los caracteres reservados únicamente en los valores dinámicos interpolados, preservando intactos los marcadores de formato (negritas, bloques de código) escritos a mano en la plantilla del mensaje.
+> **Hallazgo:** al construir el mensaje para Telegram, el modo `Markdown` (legacy) rompía el envío con errores como `"Can't find end of the entity starting at byte offset ..."` cada vez que el texto de una alerta (rutas de Windows, líneas de comando, patrones de ataque) contenía un carácter especial sin pareja — por ejemplo, el guion bajo doble en el patrón de Impacket `ADMIN$\__(timestamp)`. Esto es estructural: el contenido de una alerta de seguridad es dato técnico arbitrario, no texto controlado, por lo que siempre puede incluir `_`, `*`, `` ` ``, `(`, `)`, etc. de forma impredecible. La solución fue migrar a `MarkdownV2` e implementar funciones de escape (`escMd2`, `escMd2Code`) que escapan los caracteres reservados únicamente en los valores dinámicos interpolados, preservando intactos los marcadores de formato (negritas, bloques de código) escritos a mano en la plantilla del mensaje.
 
 El mensaje final a Telegram quedó organizado en secciones (datos del objetivo, detalles de la regla, contexto de usuario, inteligencia MITRE ATT&CK, resultado de VirusTotal), con un emoji de severidad que varía según el nivel de la alerta de Wazuh (🟢 baja, 🟡 media, 🔴 alta, 🚨 crítica).
+
+<img src="docs/screenshots/17-telegram-alert-notification.png" alt="Alerta de Wazuh recibida en Telegram, formateada en MarkdownV2" width="360">
 
 Instrucciones completas para reimportar el workflow y recrear credenciales: [`n8n-workflows/README-reproducir-pipeline.md`](n8n-workflows/README-reproducir-pipeline.md).
 
@@ -575,16 +577,15 @@ Instrucciones completas para reimportar el workflow y recrear credenciales: [`n8
 ## 🗺️ Roadmap
 
 - [x] Completar las 6 técnicas LOLBin host-based
-- [x] Instalar, validar e integrar Snort con Wazuh
 - [x] Configurar Kali Linux como atacante y simular movimiento lateral (PsExec, WMI)
 - [x] Implementar enriquecimiento con VirusTotal (script standalone, prototipo para n8n)
-- [x] Instalar n8n y portar la lógica de `wazuh_vt_enrich.py` a un workflow visual con deduplicación y notificación a Slack
+- [x] Instalar n8n y portar la lógica de `wazuh_vt_enrich.py` a un workflow visual con deduplicación y notificación a Telegram
 - [x] Migrar la deduplicación de static data a SQLite, con historial completo de alertas enriquecidas consultable por SQL
 - [x] Sumar cadena de Credential Access/Persistence: BITSAdmin (T1197), LSASS Memory Access (T1003.001) y Mimikatz Indicators (T1003)
 - [x] Validar las 12 reglas custom de Wazuh/Sysmon contra telemetría real, corrigiendo 2 reglas rotas (100030, 100090)
-- [x] Migrar el NIDS de Snort a Suricata, con 5 reglas validadas contra tráfico real y persistencia vía systemd
+- [x] Instalar y validar Suricata (NIDS) con 5 reglas validadas contra tráfico real y persistencia vía systemd
 - [x] Integrar Suricata con Wazuh vía agente nativo (eve.json → decoder nativo de Suricata)
-- [x] Reconstruir el pipeline de n8n y migrar la notificación de Slack a Telegram (mensajes MarkdownV2 resistentes a caracteres especiales)
+- [x] Reconstruir el pipeline de n8n con notificación por Telegram (mensajes MarkdownV2 resistentes a caracteres especiales)
 
 ---
 
